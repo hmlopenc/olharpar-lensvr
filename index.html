@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Simulador de Lentes · OlharPar</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #f2f2f2; font: 18px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #inicio { display: grid; place-content: center; gap: 24px; height: 100%; padding: 24px; text-align: center; background: #10161c; }
+  #inicio[hidden], canvas[hidden] { display: none; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  button { font: inherit; font-weight: 600; padding: 16px 32px; border: 0; border-radius: 12px; background: #2f80ed; color: #fff; }
+  canvas { display: block; }
+  .olho { position: fixed; top: 50%; transform: translate(-50%, -50%); max-width: 40vw; text-align: center; font-size: 4vh;
+          text-shadow: 0 0 6px #000, 0 0 12px #000; pointer-events: none; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }</script>
+</head>
+<body>
+<main id="inicio">
+  <h1>Simulador de Lentes</h1>
+  <button id="iniciar">Iniciar</button>
+</main>
+<div class="olho" style="left:25%"></div><div class="olho" style="left:75%"></div>
+<script type="module">
+import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer();
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setScissorTest(true);
+const canvas = renderer.domElement;
+canvas.hidden = true;
+document.body.append(canvas);
+const inicio = document.querySelector('#inicio');
+const olhos = document.querySelectorAll('.olho');
+const cenas = [new THREE.Scene(), new THREE.Scene()];       // uma por olho: na monovisão cada olho tem sua imagem
+const cams = [0, 1].map(() => new THREE.PerspectiveCamera(85, 1, 0.1, 10));
+const loader = new THREE.TextureLoader();
+let trava = null;
+
+async function carregar(url) {
+  const t = await loader.loadAsync(url);
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Orientação: eventos do aparelho -> quaternion da câmera (mesma conversão do antigo DeviceOrientationControls do three.js)
+const q = new THREE.Quaternion(), qFrente = new THREE.Quaternion(), qTela = new THREE.Quaternion();
+const qCostas = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);  // a câmera olha pelas costas do aparelho
+const euler = new THREE.Euler(), Z = new THREE.Vector3(0, 0, 1), Y = new THREE.Vector3(0, 1, 0);
+const rad = THREE.MathUtils.degToRad;
+let ori = null;
+addEventListener('deviceorientation', e => { ori = e; });
+
+function orientar() {
+  if (ori?.alpha == null) return;
+  euler.set(rad(ori.beta), rad(ori.alpha), -rad(ori.gamma), 'YXZ');
+  q.setFromEuler(euler).multiply(qCostas).multiply(qTela.setFromAxisAngle(Z, -rad(screen.orientation?.angle ?? 0)));
+}
+
+function recentralizar() {  // gira o mundo para que a direção atual da cabeça veja o centro da imagem (+x)
+  orientar();
+  const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+  qFrente.setFromAxisAngle(Y, -Math.PI / 2 - Math.atan2(-f.x, -f.z));
+}
+
+function desenhar() {
+  orientar();
+  const w = innerWidth, h = innerHeight, s = w / 2;
+  for (const i of [0, 1]) {
+    cams[i].quaternion.multiplyQuaternions(qFrente, q);
+    cams[i].aspect = s / h;
+    cams[i].updateProjectionMatrix();
+    renderer.setViewport(i * s, 0, s, h);
+    renderer.setScissor(i * s, 0, s, h);
+    renderer.render(cenas[i], cams[i]);
+  }
+}
+
+const legenda = txt => olhos.forEach(o => { o.textContent = txt; });
+const espera = ms => new Promise(r => setTimeout(r, ms));
+
+function parar() {
+  renderer.setAnimationLoop(null);
+  canvas.hidden = true;
+  inicio.hidden = false;
+  legenda('');
+  trava?.release();
+}
+
+document.querySelector('#iniciar').onclick = async () => {
+  await document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});
+  await screen.orientation?.lock?.('landscape').catch(() => {});
+  trava = await navigator.wakeLock?.request('screen').catch(() => null);
+  const tex = await carregar('media/manha-nitida.jpg');
+  cenas[0].background = cenas[1].background = tex;
+  inicio.hidden = true;
+  canvas.hidden = false;
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setAnimationLoop(desenhar);
+  for (let n = 5; n > 0; n--) { legenda(`Encaixe o celular no óculos · ${n}`); await espera(1000); }
+  legenda('');
+  recentralizar();
+};
+
+addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) parar(); });
+</script>
+</body>
+</html>
