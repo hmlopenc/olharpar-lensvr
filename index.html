@@ -11,8 +11,6 @@
   h1 { margin: 0; font-size: 26px; font-weight: 600; }
   button { font: inherit; font-weight: 600; padding: 16px 32px; border: 0; border-radius: 12px; background: #2f80ed; color: #fff; }
   canvas { display: block; }
-  .olho { position: fixed; top: 50%; transform: translate(-50%, -50%); max-width: 40vw; text-align: center; font-size: 4vh;
-          text-shadow: 0 0 6px #000, 0 0 12px #000; pointer-events: none; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }</script>
 </head>
@@ -21,65 +19,99 @@
   <h1>Simulador de Lentes</h1>
   <button id="iniciar">Iniciar</button>
 </main>
-<div class="olho" style="left:25%"></div><div class="olho" style="left:75%"></div>
 <script type="module">
 import * as THREE from 'three';
 
+// WebXR nativo: no Chrome Android o Cardboard cuida da cabeça, do estéreo e da distorção das lentes do óculos.
 const renderer = new THREE.WebGLRenderer();
 renderer.setPixelRatio(devicePixelRatio);
-renderer.setScissorTest(true);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local');
 const canvas = renderer.domElement;
 canvas.hidden = true;
 document.body.append(canvas);
 const inicio = document.querySelector('#inicio');
-const olhos = document.querySelectorAll('.olho');
-const cenas = [new THREE.Scene(), new THREE.Scene()];       // uma por olho: na monovisão cada olho tem sua imagem
-const cams = [0, 1].map(() => new THREE.PerspectiveCamera(85, 1, 0.1, 10));
-const loader = new THREE.TextureLoader();
-let trava = null;
 
+const cena = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 100);
+camera.layers.enable(1);          // fora do VR, a câmera mostra a malha do olho esquerdo
+cena.add(camera);                 // o que é filho da câmera acompanha a cabeça
+const mundo = new THREE.Group();  // gira para recentralizar
+cena.add(mundo);
+
+// Uma malha por olho: no VR o three.js mostra a camada 1 só ao olho esquerdo e a 2 só ao direito (monovisão).
+const olhos = [1, 2].map(camada => {
+  const m = new THREE.Mesh(undefined, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  m.layers.set(camada);
+  mundo.add(m);
+  return m;
+});
+
+// A imagem cobre 180° na vertical; o campo horizontal sai da proporção dela.
+// Coluna u da imagem -> longitude (u - 0,5) * campo, com o centro em +x (frente), como no bake.py.
+function mostrar(olho, tex) {
+  const campo = Math.PI * tex.image.width / tex.image.height;
+  if (olho.userData.campo !== campo) {
+    olho.geometry.dispose();
+    olho.geometry = new THREE.SphereGeometry(10, 96, 64, Math.PI + campo / 2, -campo);
+    olho.userData.campo = campo;
+  }
+  olho.material.map = tex;
+  olho.material.needsUpdate = true;
+}
+
+const loader = new THREE.TextureLoader();
 async function carregar(url) {
   const t = await loader.loadAsync(url);
-  t.mapping = THREE.EquirectangularReflectionMapping;
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   return t;
 }
 
-// Orientação: eventos do aparelho -> quaternion da câmera (mesma conversão do antigo DeviceOrientationControls do three.js)
-const q = new THREE.Quaternion(), qFrente = new THREE.Quaternion(), qTela = new THREE.Quaternion();
-const qCostas = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);  // a câmera olha pelas costas do aparelho
-const euler = new THREE.Euler(), Z = new THREE.Vector3(0, 0, 1), Y = new THREE.Vector3(0, 1, 0);
-const rad = THREE.MathUtils.degToRad;
-let ori = null;
-addEventListener('deviceorientation', e => { ori = e; });
+// Legenda em 3D presa à cabeça: no VR não existe HTML sobreposto.
+const tela = Object.assign(document.createElement('canvas'), { width: 1024, height: 256 });
+const ctx = tela.getContext('2d');
+const texLegenda = new THREE.CanvasTexture(tela);
+texLegenda.colorSpace = THREE.SRGBColorSpace;
+const placa = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.4),
+  new THREE.MeshBasicMaterial({ map: texLegenda, transparent: true, depthTest: false }));
+placa.position.set(0, 0, -2.5);
+placa.renderOrder = 1;
+placa.visible = false;
+camera.add(placa);
 
-function orientar() {
-  if (ori?.alpha == null) return;
-  euler.set(rad(ori.beta), rad(ori.alpha), -rad(ori.gamma), 'YXZ');
-  q.setFromEuler(euler).multiply(qCostas).multiply(qTela.setFromAxisAngle(Z, -rad(screen.orientation?.angle ?? 0)));
-}
-
-function recentralizar() {  // gira o mundo para que a direção atual da cabeça veja o centro da imagem (+x)
-  orientar();
-  const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
-  qFrente.setFromAxisAngle(Y, -Math.PI / 2 - Math.atan2(-f.x, -f.z));
-}
-
-function desenhar() {
-  orientar();
-  const w = innerWidth, h = innerHeight, s = w / 2;
-  for (const i of [0, 1]) {
-    cams[i].quaternion.multiplyQuaternions(qFrente, q);
-    cams[i].aspect = s / h;
-    cams[i].updateProjectionMatrix();
-    renderer.setViewport(i * s, 0, s, h);
-    renderer.setScissor(i * s, 0, s, h);
-    renderer.render(cenas[i], cams[i]);
+function legenda(txt) {
+  ctx.clearRect(0, 0, tela.width, tela.height);
+  if (txt) {
+    ctx.fillStyle = 'rgba(0, 0, 0, .6)';
+    ctx.beginPath();
+    ctx.roundRect(0, 48, 1024, 160, 40);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '600 72px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, 512, 128, 980);
   }
+  texLegenda.needsUpdate = true;
+  placa.visible = Boolean(txt);
 }
 
-const legenda = txt => olhos.forEach(o => { o.textContent = txt; });
+const frente = new THREE.Vector3();
+function recentralizar() {  // gira o mundo para que o centro da imagem (+x) fique na direção atual da cabeça
+  camera.getWorldDirection(frente);
+  mundo.rotation.y = Math.atan2(-frente.z, frente.x);
+}
+
+const temXR = await navigator.xr?.isSessionSupported('immersive-vr').catch(() => false) ?? false;
 const espera = ms => new Promise(r => setTimeout(r, ms));
+let trava = null;
+
+function ajustar() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
 
 function parar() {
   renderer.setAnimationLoop(null);
@@ -90,22 +122,25 @@ function parar() {
 }
 
 document.querySelector('#iniciar').onclick = async () => {
-  await document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});
-  await screen.orientation?.lock?.('landscape').catch(() => {});
-  trava = await navigator.wakeLock?.request('screen').catch(() => null);
-  const tex = await carregar('media/manha-nitida.jpg');
-  cenas[0].background = cenas[1].background = tex;
+  if (temXR) {
+    const sessao = await navigator.xr.requestSession('immersive-vr');
+    renderer.xr.setFramebufferScaleFactor(XRWebGLLayer.getNativeFramebufferScaleFactor(sessao));  // nitidez: resolução nativa da tela
+    await renderer.xr.setSession(sessao);
+    sessao.addEventListener('end', parar);
+  }
+  trava = await navigator.wakeLock?.request('screen').catch(() => null);  // reforço: a tela não pode apagar no meio
   inicio.hidden = true;
   canvas.hidden = false;
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setAnimationLoop(desenhar);
+  ajustar();
+  renderer.setAnimationLoop(() => renderer.render(cena, camera));
+  const tex = carregar('media/dia-nitida.jpg');  // carrega durante a contagem
   for (let n = 5; n > 0; n--) { legenda(`Encaixe o celular no óculos · ${n}`); await espera(1000); }
   legenda('');
+  for (const o of olhos) mostrar(o, await tex);
   recentralizar();
 };
 
-addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
-document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) parar(); });
+addEventListener('resize', ajustar);
 </script>
 </body>
 </html>

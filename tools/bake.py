@@ -1,16 +1,19 @@
-"""Gera as imagens 360° (equiretangulares) da cena sintética.
+"""Gera as imagens da cena sintética: equirretangular parcial de 220° × 180°, centrada na frente.
 
 Uso: python3 tools/bake.py   (grava em media/)
 
 A cena é uma sala vista de quem está sentado, com camadas em distâncias conhecidas:
 rua a 6 m, sala ~3 m, mesa 0,7 m, notebook 0,66 m, cardápio 0,40 m.
 Convenção (a mesma do three.js): centro da imagem = +x (frente), +y = cima, +z = direita.
+O campo horizontal sai da proporção da imagem: CAMPO = 180 × W / H.
 """
 import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 4096, 2048  # shortcut: 11 px/grau, abaixo da tela do S23 Ultra; subir para 6K se o aparelho aguentar
+CAMPO = 220            # graus na horizontal; 180 na vertical
+W, H = 4096, 3352      # ≈18,6 px/grau, acima dos ~16 px/grau da tela no óculos
+FADE = 8               # graus de degradê para o preto em cada borda lateral
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONTE_N = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -28,7 +31,7 @@ def srgb(a):
 
 
 def direcoes():
-    lon = ((np.arange(W, dtype=np.float32) + 0.5) / W - 0.5) * 2 * np.pi
+    lon = ((np.arange(W, dtype=np.float32) + 0.5) / W - 0.5) * np.radians(CAMPO)
     lat = (0.5 - (np.arange(H, dtype=np.float32) + 0.5) / H) * np.pi
     lon, lat = np.meshgrid(lon, lat)
     return np.stack([np.cos(lat) * np.cos(lon), np.sin(lat), np.cos(lat) * np.sin(lon)], -1)
@@ -134,7 +137,7 @@ def cartao(D, centro, largura, altura, tex_rgb, ganho):
     a, b = p @ r, p @ u
     dentro = (t > 0) & (np.abs(a) < largura / 2) & (np.abs(b) < altura / 2)
     # pré-filtra a textura para ~2x a resolução que ela terá na imagem (anti-serrilhado)
-    alvo = int(2 * np.degrees(2 * np.arctan(largura / 2 / np.linalg.norm(c))) * W / 360)
+    alvo = int(2 * np.degrees(2 * np.arctan(largura / 2 / np.linalg.norm(c))) * W / CAMPO)
     esc = alvo / tex_rgb.width
     tam = (alvo, max(2, int(tex_rgb.height * esc)))
     tex = lin(tex_rgb.resize(tam, Image.LANCZOS)) * ganho
@@ -218,19 +221,27 @@ def compor(camadas):
     return out
 
 
+def degrade(rgb):
+    """Escurece as bordas laterais nos últimos FADE graus: a imagem some no preto, sem quina."""
+    lon = np.abs((np.arange(W) + 0.5) / W - 0.5) * CAMPO
+    f = np.clip((CAMPO / 2 - lon) / FADE, 0, 1)
+    return rgb * (f * f * (3 - 2 * f))[None, :, None]
+
+
 def salvar(rgb, nome):
+    rgb = degrade(rgb)
     os.makedirs(os.path.join(RAIZ, "media"), exist_ok=True)
     Image.fromarray((srgb(rgb) * 255 + 0.5).astype(np.uint8)).save(os.path.join(RAIZ, "media", nome), quality=90)
 
 
 if __name__ == "__main__":
-    for cena, noite in (("manha", False), ("noite", True)):
+    for cena, noite in (("dia", False), ("noite", True)):
         camadas = construir_cena(noite)
         img = compor(camadas)
         # autoverificação: frente = rua, cardápio onde foi posto, luzes à noite
         assert img.shape == (H, W, 3)
         assert camadas[0][2][H // 2 - 20, W // 2] == 1, "o centro da imagem deve mostrar a rua"
-        lon, lat = int((0.5 - 12 / 360) * W), int((0.5 + 30 / 180) * H)
+        lon, lat = int((0.5 - 12 / CAMPO) * W), int((0.5 + 30 / 180) * H)
         assert camadas[4][2][lat, lon] == 1, "o cardápio deve estar a 12° à esquerda e 30° abaixo"
         assert (img.max(-1) > 1).sum() > (100 if noite else -1), "a cena noturna precisa de luzes intensas"
         salvar(img, f"{cena}-nitida.jpg")
