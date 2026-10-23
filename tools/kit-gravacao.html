@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Kit de gravação · Simulador de lentes</title>
+<style>
+  /* Fonte: tamanhos em pt são físicos na impressão. Cardápio e celular a 40 cm; notebook a 66 cm (×1,65). */
+  @page { size: A4; margin: 14mm; }
+  @page paisagem { size: A4 landscape; margin: 12mm; }
+  @page celular { size: 70mm 150mm; margin: 4mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 9.6pt/1.3 "Liberation Sans", Arial, sans-serif; color: #1b1b1b; }
+  section { break-after: page; }
+  section:last-child { break-after: auto; }
+  h1 { font-size: 17pt; margin: 0 0 2mm; }
+  h2 { font-size: 10.8pt; margin: 3.2mm 0 1mm; padding-bottom: .6mm; border-bottom: .3mm solid #999; }
+  ul { margin: 0; padding-left: 5mm; }
+  li { margin: .35mm 0; }
+  .sub { margin: 0 0 3mm; color: #444; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1.5mm; }
+  td { border: .25mm solid #888; padding: 1.2mm 2mm; }
+  td.b { width: 26mm; }
+  .regua { display: block; margin: 2mm 0 0; }
+  /* Adereços */
+  .cardapio { height: 269mm; display: flex; flex-direction: column; justify-content: center; padding: 0 12mm;
+              background: #f6efe1; font-family: "Liberation Sans", Arial, sans-serif; }
+  .linha { display: flex; justify-content: space-between; gap: 6mm; line-height: 1.3; }
+  .titulo { font-weight: 700; letter-spacing: .5pt; text-align: center; margin-bottom: 4mm; }
+  .notebook { page: paisagem; height: 186mm; display: flex; flex-direction: column; justify-content: center; padding: 0 8mm; }
+  .notebook p { margin: 0; line-height: 1.22; }
+  .celular { page: celular; height: 142mm; display: flex; flex-direction: column; gap: 1.6mm; background: #e9e4dc; padding: 3mm; }
+  .bolha { background: #fff; border-radius: 3mm; padding: 1.2mm 2.4mm; line-height: 1.2; max-width: 100%; }
+  .bolha.eu { background: #d9fdd3; align-self: flex-end; }
+</style>
+</head>
+<body>
+
+<section>
+  <h1>Kit de gravação · Simulador de lentes (MVP)</h1>
+  <p class="sub">Duas cenas em foto 360° com a Insta360 X6: <b>café na calçada (dia)</b> e <b>carro parado (noite)</b>.</p>
+
+  <h2>1. Antes de sair</h2>
+  <ul>
+    <li>Imprima as páginas 1 e 2 em A4, escala 100% ("tamanho real", sem "ajustar à página"). A régua abaixo precisa medir 10 cm no papel.</li>
+    <li>Apoie o cardápio (página 2) num suporte ou papelão dobrado, inclinado como quem lê.</li>
+    <li>A página 3 abre no notebook e a página 4 no celular, em tela cheia.</li>
+    <li>Leve a X6 com bastão ou tripé, a trena, o cardápio, o notebook, o celular e os carregadores.</li>
+    <li><b>Foto-teste, pode ser em casa:</b> cardápio a 40 cm de uma lente da X6. Exporte e coloque em <i>VR IOL/fotos/teste</i> para eu conferir a nitidez. Se não ficar nítido, afaste para 50 cm e anote: o modelo usa a distância medida.</li>
+  </ul>
+  <svg class="regua" width="100mm" height="7mm" viewBox="0 0 100 7" aria-label="régua de 10 cm">
+    <rect x="0" y="0" width="100" height="2.2" fill="#1b1b1b"/>
+    <g stroke="#1b1b1b" stroke-width=".35">
+      <line x1=".2" y1="0" x2=".2" y2="5"/><line x1="10" y1="0" x2="10" y2="3.5"/><line x1="20" y1="0" x2="20" y2="3.5"/>
+      <line x1="30" y1="0" x2="30" y2="3.5"/><line x1="40" y1="0" x2="40" y2="3.5"/><line x1="50" y1="0" x2="50" y2="5"/>
+      <line x1="60" y1="0" x2="60" y2="3.5"/><line x1="70" y1="0" x2="70" y2="3.5"/><line x1="80" y1="0" x2="80" y2="3.5"/>
+      <line x1="90" y1="0" x2="90" y2="3.5"/><line x1="99.8" y1="0" x2="99.8" y2="5"/>
+    </g>
+    <text x="50" y="6.9" font-size="2.2" text-anchor="middle" font-family="Liberation Sans, Arial">10 cm</text>
+  </svg>
+
+  <h2>2. Câmera (vale para as duas cenas)</h2>
+  <ul>
+    <li>Foto 360°, resolução máxima, DNG ligado.</li>
+    <li>Uma das lentes apontada para o centro da cena. Anote qual: a do lado da tela ou a oposta.</li>
+    <li>Tripé ou bastão firme e nivelado. Não mexa na câmera entre as fotos de uma mesma cena.</li>
+    <li>Dispare pelo app e fique atrás da câmera, a pelo menos 1,5 m. Tudo num leque de 220° à frente aparece.</li>
+    <li>3 fotos seguidas mudando só o EV: −2, 0 e +2 de dia; −3, 0 e +3 à noite. ISO o mais baixo que der.</li>
+  </ul>
+
+  <h2>3. Cena 1 · Café na calçada (dia)</h2>
+  <ul>
+    <li>Mesa de frente para a rua, com placas, fachadas ou ponto de ônibus a 6 m ou mais.</li>
+    <li>Lente na altura dos olhos de quem está sentado: 1,15 a 1,20 m do chão.</li>
+    <li>Cardápio a 40 cm da lente, centralizado, um pouco abaixo da linha dos olhos, virado para a câmera.</li>
+    <li>Notebook a cerca de 66 cm, um pouco para o lado, com a página 3 em tela cheia. Ajuste o zoom até a régua medir 10 cm.</li>
+    <li>Ninguém a menos de 2 m na frente da câmera.</li>
+  </ul>
+
+  <h2>4. Cena 2 · Carro parado (noite)</h2>
+  <ul>
+    <li>Carro estacionado numa rua com postes, semáforo e letreiros. Melhor ainda com carros parados no sinal, faróis virados para você.</li>
+    <li>Lente no lugar da cabeça do motorista, na altura dos olhos (bastão preso no encosto ou tripé no banco).</li>
+    <li>Para-brisa limpo por dentro e por fora. Painel aceso (ignição ligada).</li>
+    <li>Celular num suporte a 40 cm da lente, com a página 4 em tela cheia (a régua mede 5 cm) e brilho na metade.</li>
+  </ul>
+
+  <h2>5. Medidas, com a trena, a partir da lente</h2>
+  <table>
+    <tr><td>Café: cardápio</td><td class="b">cm</td><td>Carro: celular</td><td class="b">cm</td></tr>
+    <tr><td>Café: tela do notebook</td><td class="b">cm</td><td>Carro: painel (velocímetro)</td><td class="b">cm</td></tr>
+    <tr><td>Café: placas e fachadas (estimar)</td><td class="b">m</td><td>Carro: tela central / GPS</td><td class="b">cm</td></tr>
+    <tr><td>Café: altura da lente</td><td class="b">m</td><td>Carro: faróis e semáforo (estimar)</td><td class="b">m</td></tr>
+    <tr><td>Lente virada para a cena</td><td class="b">tela / oposta</td><td>Lente virada para a cena</td><td class="b">tela / oposta</td></tr>
+  </table>
+
+  <h2>6. Depois</h2>
+  <ul>
+    <li>No Insta360 Studio, exporte cada foto como 360° equirretangular, resolução máxima. Em DNG se o Studio oferecer; senão, JPG na qualidade máxima.</li>
+    <li>Nomes: cafe-m2, cafe-0, cafe-p2, carro-m3, carro-0, carro-p3.</li>
+    <li>Coloque tudo na pasta <i>VR IOL/fotos</i> do Mac e me mande uma foto desta folha com as medidas.</li>
+  </ul>
+</section>
+
+<section class="cardapio">
+  <div class="titulo" style="font-size:72pt">CARDÁPIO</div>
+  <div class="linha" style="font-size:48pt"><span>Expresso</span><span>R$ 6</span></div>
+  <div class="linha" style="font-size:36pt"><span>Pão de queijo</span><span>R$ 8</span></div>
+  <div class="linha" style="font-size:28pt"><span>Suco de laranja</span><span>R$ 10</span></div>
+  <div class="linha" style="font-size:22pt"><span>Misto quente na chapa</span><span>R$ 14</span></div>
+  <div class="linha" style="font-size:18pt"><span>Tapioca com queijo coalho</span><span>R$ 16</span></div>
+  <div class="linha" style="font-size:14pt"><span>Pergunte pelas opções sem glúten e sem lactose.</span></div>
+</section>
+
+<section class="notebook">
+  <p style="font-size:79pt;font-weight:700">NOTÍCIAS</p>
+  <p style="font-size:59pt">Rio: sol, 28 °C</p>
+  <p style="font-size:46pt">Trânsito livre na Barra</p>
+  <p style="font-size:36pt">Feira orgânica no sábado, 8h</p>
+  <p style="font-size:30pt">Cinema: sessão especial às 19h30</p>
+  <p style="font-size:23pt">Previsão: chuva fraca no fim da tarde de domingo</p>
+  <svg class="regua" width="100mm" height="7mm" viewBox="0 0 100 7" aria-label="régua de 10 cm">
+    <rect x="0" y="0" width="100" height="2.2" fill="#1b1b1b"/>
+    <text x="50" y="6.9" font-size="2.2" text-anchor="middle" font-family="Liberation Sans, Arial">ajuste o zoom até esta barra medir 10 cm</text>
+  </svg>
+</section>
+
+<section class="celular">
+  <div class="bolha" style="font-size:48pt">Oi!</div>
+  <div class="bolha" style="font-size:36pt">Já saí.</div>
+  <div class="bolha" style="font-size:28pt">Chego já.</div>
+  <div class="bolha eu" style="font-size:22pt">Pode pedir um café pra mim?</div>
+  <div class="bolha" style="font-size:18pt">Sem açúcar, por favor. Obrigada!</div>
+  <div class="bolha eu" style="font-size:14pt">Estacionei na rua de trás, perto da farmácia.</div>
+  <svg class="regua" width="50mm" height="5mm" viewBox="0 0 50 5" aria-label="régua de 5 cm">
+    <rect x="0" y="0" width="50" height="1.6" fill="#1b1b1b"/>
+    <text x="25" y="4.6" font-size="1.9" text-anchor="middle" font-family="Liberation Sans, Arial">esta barra deve medir 5 cm</text>
+  </svg>
+</section>
+
+</body>
+</html>
