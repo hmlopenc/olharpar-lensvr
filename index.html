@@ -133,7 +133,7 @@ document.querySelector('#iniciar').onclick = async () => {
   canvas.hidden = false;
   ajustar();
   renderer.setAnimationLoop(() => renderer.render(cena, camera));
-  const tex = carregar('media/dia-nitida.jpg');  // carrega durante a contagem
+  const tex = carregar('media/dia-monofocal.jpg');  // carrega durante a contagem
   for (let n = 5; n > 0; n--) { legenda(`Encaixe o celular no óculos · ${n}`); await espera(1000); }
   legenda('');
   for (const o of olhos) mostrar(o, await tex);

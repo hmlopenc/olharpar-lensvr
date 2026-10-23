@@ -1,19 +1,27 @@
-"""Gera as imagens da cena sintética: equirretangular parcial de 220° × 180°, centrada na frente.
+"""Gera as imagens de cada lente a partir da cena sintética: equirretangular parcial de 220° × 180°.
 
-Uso: python3 tools/bake.py   (grava em media/)
+Uso: python3 tools/bake.py [folha_de_contato.jpg]   (grava media/{dia|noite}-{lente}.jpg)
+Os parâmetros clínicos ficam em tools/lentes.py.
 
 A cena é uma sala vista de quem está sentado, com camadas em distâncias conhecidas:
 rua a 6 m, sala ~3 m, mesa 0,7 m, notebook 0,66 m, cardápio 0,40 m.
 Convenção (a mesma do three.js): centro da imagem = +x (frente), +y = cima, +z = direita.
 O campo horizontal sai da proporção da imagem: CAMPO = 180 × W / H.
 """
-import os
+import os, sys, tempfile
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from scipy.ndimage import gaussian_filter, maximum_filter, zoom
+from scipy.signal import oaconvolve
+from lentes import GANHO, LENTES, PUPILA_MM
 
 CAMPO = 220            # graus na horizontal; 180 na vertical
 W, H = 4096, 3352      # ≈18,6 px/grau, acima dos ~16 px/grau da tela no óculos
 FADE = 8               # graus de degradê para o preto em cada borda lateral
+PX_GRAU = W / CAMPO
+VEU_GRAUS = 3.0        # largura (sigma) do véu da catarata
+OMBRO = (0.7, 40.0)    # noite: acima de 0,7 comprime em log até a luz mais forte (40); o halo aparece como disco
+                       # mais fraco em volta da luz, em vez de tudo saturar em branco
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONTE_N = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -25,7 +33,11 @@ def lin(img):
     return np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
 
 
-def srgb(a):
+def srgb(a, noite=False):
+    if noite:  # comprime os realces pela luminância máxima do pixel, preservando a cor
+        k, L = OMBRO
+        m = np.maximum(a.max(-1, keepdims=True), 1e-6)
+        a = a * np.where(m > k, k + (1 - k) * np.log1p(np.maximum(m - k, 0) / 0.5) / np.log1p((L - k) / 0.5), m) / m
     a = np.clip(a / np.maximum(1, a.max(-1, keepdims=True)), 0, 1)  # satura preservando a cor (neon continua colorido)
     return np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
 
@@ -77,7 +89,7 @@ def fachada(noite):
     # painel do ponto de ônibus: linhas de 15, 8, 5 e 3,5 cm
     d.rectangle([700, 420, 1300, 880], fill=(245, 245, 240))
     if noite:
-        e.rectangle([700, 420, 1300, 880], fill=70)
+        e.rectangle([700, 420, 1300, 880], fill=38)  # painel iluminado ~0,9: superfície legível, não fonte de luz
     y = 440
     for linha, cm in (("LINHA 309", 15), ("Recreio  10 min", 8), ("Barra  15 min  ·  Tijuca  25 min", 5),
                       ("Horários sujeitos a alteração", 3.5)):
@@ -221,6 +233,95 @@ def compor(camadas):
     return out
 
 
+# ---------- óptica ----------
+
+def disco(d_eixo, d_perp, eixo=0.0):
+    """Borrão em disco normalizado; elipse quando os diâmetros (px) diferem. eixo: graus, anti-horário na imagem.
+    Menor que 1 px nos dois sentidos = nítido (None)."""
+    if max(d_eixo, d_perp) < 1:
+        return None
+    r = int(np.ceil(max(d_eixo, d_perp) / 2))
+    o = (np.arange(4) + 0.5) / 4 - 0.5                        # 4 x 4 subamostras por pixel: borda suave
+    y, x = np.mgrid[-r:r + 1, -r:r + 1].astype(np.float32)
+    X, Y = x[..., None, None] + o, y[..., None, None] + o[:, None]
+    c, s = np.cos(np.radians(eixo)), np.sin(np.radians(eixo))
+    a, b = X * c - Y * s, X * s + Y * c                         # ao longo do eixo e perpendicular (y da imagem desce)
+    k = ((a / max(d_eixo / 2, .5)) ** 2 + (b / max(d_perp / 2, .5)) ** 2 <= 1).mean((-2, -1))
+    return (k / k.sum()).astype(np.float32)
+
+
+def psf(lente, V, pupila_mm):
+    """Borrão de um objeto com vergência V (D): soma dos componentes pesados pela fração da luz. None = nítido."""
+    px_por_D = pupila_mm / 1000 * GANHO * np.degrees(1) * PX_GRAU
+    basal, cil, eixo = lente.get("desfoque_basal", 0.0), lente.get("cilindro", 0.0), lente.get("eixo", 0)
+    d = lambda foco, faixa: (max(0.0, abs(V - foco) - faixa) + basal) * px_por_D
+    partes = [(fr, disco(d(f - cil / 2, fx), d(f + cil / 2, fx), eixo)) for f, fx, fr in lente["componentes"]]
+    if all(k is None for _, k in partes):
+        return None
+    r = max(k.shape[0] // 2 for _, k in partes if k is not None)
+    total = np.zeros((2 * r + 1,) * 2, np.float32)
+    for fr, k in partes:
+        m = 0 if k is None else k.shape[0] // 2
+        total[r - m:r + m + 1, r - m:r + m + 1] += fr * (1 if k is None else k)
+    return total
+
+
+def borrar(pre, k):
+    """Convolução só onde a camada existe, mais a margem do borrão."""
+    r = k.shape[0] // 2
+    ys, xs = np.nonzero(pre[..., 3])
+    if ys.size == 0:
+        return pre
+    y0, y1, x0, x1 = max(ys.min() - r, 0), min(ys.max() + r + 1, H), max(xs.min() - r, 0), min(xs.max() + r + 1, W)
+    out = np.zeros_like(pre)
+    out[y0:y1, x0:x1] = oaconvolve(pre[y0:y1, x0:x1], k[..., None], mode="same", axes=(0, 1))
+    return out
+
+
+def desfocar(camadas, lente, pupila_mm):
+    """Borra cada camada pelo seu desfoque (rgb pré-multiplicado e alfa) e empilha da mais distante para a mais próxima."""
+    out = np.zeros((H, W, 3), np.float32)
+    for dist, rgb, a in camadas:
+        pre = np.concatenate([rgb * a[..., None], a[..., None]], -1)
+        k = psf(lente, 1 / dist, pupila_mm)
+        if k is not None:
+            pre = borrar(pre, k)
+        out = out * (1 - pre[..., 3:]) + pre[..., :3]
+    return out
+
+
+def catarata(img, lente):
+    """Véu, contraste e amarelamento. Lentes sem esses campos passam intactas."""
+    v = lente.get("veu", 0.0)
+    if v:  # espalhamento largo, calculado em 1/8 da resolução (o véu é liso)
+        p = 8
+        peq = img.reshape(H // p, p, W // p, p, 3).mean((1, 3))
+        peq = gaussian_filter(peq, (VEU_GRAUS * PX_GRAU / p,) * 2 + (0,), mode="nearest")
+        img = (1 - v) * img + v * zoom(peq, (p, p, 1), order=1)
+    c = lente.get("contraste", 1.0)
+    img = c * img + (1 - c) * img.mean((0, 1))
+    return img * np.asarray(lente.get("amarelamento", (1, 1, 1)), np.float32)
+
+
+def verificar(cena, imgs, nitida, rua):
+    for nome, l in LENTES.items():
+        assert abs(sum(c[2] for c in l["componentes"]) - 1) < 1e-6, f"{nome}: frações devem somar 1"
+    assert all(i.shape == (H, W, 3) for i in imgs.values()), "dimensões"
+    assert np.allclose(imgs["monofocal"][rua], nitida[rua], atol=1e-5), "a monofocal não pode borrar o longe"
+    tam = [0 if (k := disco(d, d)) is None else k.shape[0] for d in (0.5, 3, 8, 20)]
+    assert tam == sorted(tam) and tam[-1] > tam[1], "o borrão precisa crescer com o desfoque"
+    k = psf(LENTES["astig"], 2.5, PUPILA_MM[cena])
+    assert (k.sum(1) > 0).sum() > (k.sum(0) > 0).sum(), "astigmatismo a 90° borra mais na vertical de perto"
+    cat, mono = imgs["catarata"], imgs["monofocal"]
+    assert cat[..., 2].mean() / cat[..., 0].mean() < mono[..., 2].mean() / mono[..., 0].mean(), "catarata amarela"
+    assert cat.std() < mono.std(), "catarata com menos contraste"
+    if cena == "noite":  # halo: brilho num anel em volta das luzes intensas
+        luz = nitida.max(-1) > 5
+        anel = maximum_filter(luz, 25) & ~maximum_filter(luz, 7)
+        brilho = lambda n: imgs[n].max(-1)[anel].mean()
+        assert brilho("multifocal") > 1.5 * brilho("monofocal"), "a multifocal precisa de halo à noite"
+
+
 def degrade(rgb):
     """Escurece as bordas laterais nos últimos FADE graus: a imagem some no preto, sem quina."""
     lon = np.abs((np.arange(W) + 0.5) / W - 0.5) * CAMPO
@@ -228,21 +329,49 @@ def degrade(rgb):
     return rgb * (f * f * (3 - 2 * f))[None, :, None]
 
 
-def salvar(rgb, nome):
-    rgb = degrade(rgb)
+def oito_bits(rgb, noite=False):
+    return (srgb(rgb, noite) * 255 + 0.5).astype(np.uint8)
+
+
+def salvar(rgb, nome, noite=False):
     os.makedirs(os.path.join(RAIZ, "media"), exist_ok=True)
-    Image.fromarray((srgb(rgb) * 255 + 0.5).astype(np.uint8)).save(os.path.join(RAIZ, "media", nome), quality=90)
+    Image.fromarray(oito_bits(degrade(rgb), noite)).save(os.path.join(RAIZ, "media", nome), quality=90)
+
+
+def folha_de_contato(recortes, caminho, w=400, h=300):
+    """Uma linha por lente; colunas = cena × região, em 1:1, para comparar nitidez e halos."""
+    colunas = [(cena, regiao) for cena in recortes for regiao in recortes[cena]["nítida"]]
+    linhas = list(recortes["dia"])
+    folha = Image.new("RGB", (150 + w * len(colunas), 34 + h * len(linhas)), (255, 255, 255))
+    d = ImageDraw.Draw(folha)
+    fonte = ImageFont.truetype(FONTE, 20)
+    for j, (cena, regiao) in enumerate(colunas):
+        d.text((150 + j * w + 8, 6), f"{cena} · {regiao}", fill=(0, 0, 0), font=fonte)
+        for i, lente in enumerate(linhas):
+            folha.paste(Image.fromarray(recortes[cena][lente][regiao]), (150 + j * w, 34 + i * h))
+    for i, lente in enumerate(linhas):
+        d.text((8, 34 + i * h + h // 2), lente, fill=(0, 0, 0), font=fonte)
+    folha.save(caminho, quality=90)
 
 
 if __name__ == "__main__":
+    folha = sys.argv[1] if len(sys.argv) > 1 else os.path.join(tempfile.gettempdir(), "folha-de-contato.jpg")
+    regioes = {"longe": (2048, 1620), "intermediário": (2513, 2272), "perto": (1825, 2086)}  # centros em px
+    recortes = {}
     for cena, noite in (("dia", False), ("noite", True)):
         camadas = construir_cena(noite)
-        img = compor(camadas)
-        # autoverificação: frente = rua, cardápio onde foi posto, luzes à noite
-        assert img.shape == (H, W, 3)
+        nitida = compor(camadas)
+        # autoverificação da cena: frente = rua, cardápio onde foi posto, luzes à noite
         assert camadas[0][2][H // 2 - 20, W // 2] == 1, "o centro da imagem deve mostrar a rua"
         lon, lat = int((0.5 - 12 / CAMPO) * W), int((0.5 + 30 / 180) * H)
         assert camadas[4][2][lat, lon] == 1, "o cardápio deve estar a 12° à esquerda e 30° abaixo"
-        assert (img.max(-1) > 1).sum() > (100 if noite else -1), "a cena noturna precisa de luzes intensas"
-        salvar(img, f"{cena}-nitida.jpg")
+        assert (nitida.max(-1) > 1).sum() > (100 if noite else -1), "a cena noturna precisa de luzes intensas"
+        imgs = {nome: catarata(desfocar(camadas, l, PUPILA_MM[cena]), l) for nome, l in LENTES.items()}
+        verificar(cena, imgs, nitida, camadas[0][2] == 1)
+        for nome, img in imgs.items():
+            salvar(img, f"{cena}-{nome}.jpg", noite)
+        recortes[cena] = {n: {r: oito_bits(i[y - 150:y + 150, x - 200:x + 200], noite) for r, (x, y) in regioes.items()}
+                          for n, i in {"nítida": nitida, **imgs}.items()}
         print(cena, "ok")
+    folha_de_contato(recortes, folha)
+    print("folha de contato:", folha)
