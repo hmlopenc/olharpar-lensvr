@@ -6,11 +6,11 @@
 
 **Blocked by:** None. A publicação depende do GitHub conectado e do repositório `olharpar-lensvr` criado.
 
-**Status:** ready-for-agent
+**Status:** código pronto em 23/10/2026; falta o teste no S23 Ultra e a publicação (GitHub desconectado)
 
-- [ ] Gerador produz a cena sintética de dia e de noite em 220° × 180°, com letreiros/rua a 6 m, tela a 66 cm e cardápio a 40 cm
-- [ ] Esfera parcial com o campo tirado da proporção da imagem, sem espelhamento, uma malha por olho (camadas 1 e 2)
-- [ ] Contagem em 3D presa à cabeça; recentraliza ao fim
-- [ ] Sem WebXR, roda na tela olhando para a frente; carrega sem erros no navegador headless
+- [x] Gerador produz a cena sintética de dia e de noite em 220° × 180°, com letreiros/rua a 6 m, tela a 66 cm e cardápio a 40 cm
+- [x] Esfera parcial com o campo tirado da proporção da imagem, sem espelhamento, uma malha por olho (camadas 1 e 2)
+- [x] Contagem em 3D presa à cabeça; recentraliza ao fim
+- [x] Sem WebXR, roda na tela olhando para a frente; carrega sem erros no navegador headless
 - [ ] No S23 Ultra: entra no VR do Chrome, perfil do óculos escaneado, sem distorção nas bordas
 - [ ] Publicado no GitHub Pages

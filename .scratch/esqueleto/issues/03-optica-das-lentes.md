@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 (formato de 220°)
 
-**Status:** ready-for-agent
+**Status:** done em 23/10/2026 (folha de contato revisada pelo agente; falta o olhar clínico do Dr. Henrique)
 
-- [ ] Parâmetros de todas as lentes num único arquivo
-- [ ] Verificações embutidas passam: sem borrão onde a lente foca, borrão crescente com o desfoque, frações somando 1, dimensões das imagens
-- [ ] Folha de contato com todas as variantes, revisada visualmente
-- [ ] Multifocal mostra halos à noite e a monofocal quase nenhum; catarata mostra véu e amarelamento; astigmatismo borra em elipse
+- [x] Parâmetros de todas as lentes num único arquivo
+- [x] Verificações embutidas passam: sem borrão onde a lente foca, borrão crescente com o desfoque, frações somando 1, dimensões das imagens
+- [x] Folha de contato com todas as variantes, revisada visualmente
+- [x] Multifocal mostra halos à noite e a monofocal quase nenhum; catarata mostra véu e amarelamento; astigmatismo borra em elipse

@@ -4,15 +4,15 @@
 
 **Blocked by:** 01, 03
 
-**Status:** ready-for-agent
+**Status:** done em 23/10/2026 (o nome nos dois olhos só se confirma no óculos)
 
-- [ ] Catarata sempre incluída; lentes todas marcadas por padrão
-- [ ] Sequência na ordem da spec, só com as lentes marcadas
-- [ ] Tórica em dois capítulos (sem correção, corrigida); monovisão com OD longe e OE perto
-- [ ] Nome do capítulo visível nos dois olhos nos primeiros segundos
-- [ ] Carrega a imagem do capítulo atual e a do próximo e descarta as anteriores
-- [ ] `?s=` encurta os capítulos para teste
-- [ ] Teste da montagem da sequência passa (`node --test`)
-- [ ] No fim, volta à tela inicial
+- [x] Catarata sempre incluída; lentes todas marcadas por padrão
+- [x] Sequência na ordem da spec, só com as lentes marcadas
+- [x] Tórica em dois capítulos (sem correção, corrigida); monovisão com OD longe e OE perto
+- [x] Nome do capítulo visível nos dois olhos nos primeiros segundos
+- [x] Carrega a imagem do capítulo atual e a do próximo e descarta as anteriores
+- [x] `?s=` encurta os capítulos para teste
+- [x] Teste da montagem da sequência passa (`node --test`)
+- [x] No fim, volta à tela inicial
 
 Narração: quando os áudios existirem, cada capítulo toca o seu e dura o tempo do áudio. Fica para depois da gravação.
