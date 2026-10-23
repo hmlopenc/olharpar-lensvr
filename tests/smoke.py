@@ -36,6 +36,16 @@ try:
             pag.screenshot(path=FOTO[foto])  # no SwiftShader cada quadro demora: confere se ainda é o mesmo capítulo
             assert pag.get_attribute("body", "data-capitulo") == cap, f"a foto de {cap} saiu atrasada"
         pag.wait_for_selector("#inicio:not([hidden])", timeout=60000)  # no fim volta à tela inicial
+        # Falha visível: sem as imagens, volta à tela inicial com o motivo escrito (no celular não há console).
+        ruim = nav.new_page(viewport={"width": 800, "height": 600})
+        if THREE_DIR:
+            ruim.route("https://cdn.jsdelivr.net/npm/three@*/build/*", lambda r: r.fulfill(
+                path=os.path.join(THREE_DIR, r.request.url.rsplit("/", 1)[1]), content_type="text/javascript"))
+        ruim.route("**/media/*", lambda r: r.fulfill(status=404, body="sem imagem"))
+        ruim.goto("http://localhost:8765/?s=1")
+        ruim.click("#iniciar")
+        ruim.wait_for_selector("#erro:not([hidden])", timeout=30000)
+        assert "não carregou" in ruim.inner_text("#erro") and ruim.is_visible("#inicio"), ruim.inner_text("#erro")
         nav.close()
 finally:
     servidor.terminate()
