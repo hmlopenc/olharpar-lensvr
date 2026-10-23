@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SAIDA = sys.argv[1] if len(sys.argv) > 1 else "."
 THREE_DIR = os.environ.get("THREE_DIR")
-FRENTE = os.path.join(SAIDA, "smoke-frente.png")
+FOTO = {c: os.path.join(SAIDA, f"smoke-{c}.png") for c in ("monofocal", "monovisao")}
 
 servidor = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=RAIZ,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -26,24 +26,31 @@ try:
         if THREE_DIR:
             pag.route("https://cdn.jsdelivr.net/npm/three@*/build/*", lambda r: r.fulfill(
                 path=os.path.join(THREE_DIR, r.request.url.rsplit("/", 1)[1]), content_type="text/javascript"))
-        pag.goto("http://localhost:8765/")
+        pag.goto("http://localhost:8765/?s=10")
+        for lente in ("edof", "multifocal", "torica"):  # sobram catarata, monofocal e monovisão em cada cena
+            pag.uncheck(f"#lentes input[value={lente}]")
         pag.click("#iniciar")
-        pag.wait_for_selector("canvas:not([hidden])")
-        pag.wait_for_timeout(6500)     # contagem de 5 s, imagem carregada e recentralizada
-        pag.screenshot(path=FRENTE)
+        for cap, foto in (("De dia · Lente monofocal", "monofocal"), ("De dia · Monovisão", "monovisao")):
+            pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=60000)
+            pag.wait_for_timeout(3300)  # a legenda some depois de 3 s
+            pag.screenshot(path=FOTO[foto])  # no SwiftShader cada quadro demora: confere se ainda é o mesmo capítulo
+            assert pag.get_attribute("body", "data-capitulo") == cap, f"a foto de {cap} saiu atrasada"
+        pag.wait_for_selector("#inicio:not([hidden])", timeout=60000)  # no fim volta à tela inicial
         nav.close()
 finally:
     servidor.terminate()
 
 assert not erros, erros
-# Sem espelhamento e com a frente no centro: na cena sintética a PADARIA (vermelho-escuro) fica à esquerda
-# da FARMÁCIA (verde) na fachada em frente.
-img = np.asarray(Image.open(FRENTE).convert("RGB"), np.int16)
-r, g, b = img[..., 0], img[..., 1], img[..., 2]
+img = {k: np.asarray(Image.open(v).convert("RGB"), np.int16) for k, v in FOTO.items()}
+# Sem espelhamento e com a frente no centro: a PADARIA (vermelho-escuro) fica à esquerda da FARMÁCIA (verde).
+r, g, b = (img["monofocal"][..., i] for i in range(3))
 verde = (g > r + 50) & (g > b + 30)
 vermelho = (r > g + 50) & (r > b + 50) & (r < 170)
 assert verde.sum() > 50 and vermelho.sum() > 50, "fachada não aparece na frente"
 xv, xr = np.nonzero(verde)[1].mean(), np.nonzero(vermelho)[1].mean()
 assert xr < xv, f"imagem espelhada: PADARIA em x={xr:.0f}, FARMÁCIA em x={xv:.0f}"
-assert abs((xr + xv) / 2 - img.shape[1] / 2) < img.shape[1] * 0.1, "a frente da cena não está no centro"
+assert abs((xr + xv) / 2 - img["monofocal"].shape[1] / 2) < img["monofocal"].shape[1] * 0.1, "frente fora do centro"
+# Fora do VR aparece o olho esquerdo; na monovisão ele é o de perto, então a fachada ao longe fica borrada.
+nitidez = lambda a: np.square(np.diff(a[150:330, 500:1050].mean(-1), axis=1)).mean()  # energia do gradiente cai com o borrão
+assert nitidez(img["monovisao"]) < 0.8 * nitidez(img["monofocal"]), "monovisão: OE devia mostrar a imagem de perto"
 print("smoke ok")

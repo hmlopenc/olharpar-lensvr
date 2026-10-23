@@ -6,10 +6,16 @@
 <title>Simulador de Lentes · OlharPar</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; color: #f2f2f2; font: 18px/1.4 system-ui, sans-serif; overflow: hidden; }
-  #inicio { display: grid; place-content: center; gap: 24px; height: 100%; padding: 24px; text-align: center; background: #10161c; }
+  #inicio { display: grid; place-content: center; gap: 20px; height: 100%; padding: 24px; box-sizing: border-box;
+            background: #10161c; text-align: center; overflow-y: auto; }
   #inicio[hidden], canvas[hidden] { display: none; }
   h1 { margin: 0; font-size: 26px; font-weight: 600; }
-  button { font: inherit; font-weight: 600; padding: 16px 32px; border: 0; border-radius: 12px; background: #2f80ed; color: #fff; }
+  fieldset { display: grid; gap: 4px; margin: 0; padding: 12px 16px; border: 1px solid #33414e; border-radius: 12px; text-align: left; }
+  legend { padding: 0 6px; color: #a9b7c4; font-size: 15px; }
+  label { display: flex; align-items: center; gap: 12px; min-height: 48px; font-size: 20px; }
+  input[type=checkbox] { width: 26px; height: 26px; accent-color: #2f80ed; }
+  button { font: inherit; font-weight: 600; min-height: 56px; padding: 16px 32px; border: 0; border-radius: 12px; background: #2f80ed; color: #fff; }
+  .aviso { margin: 0; max-width: 22em; color: #a9b7c4; font-size: 15px; }
   canvas { display: block; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }</script>
@@ -17,10 +23,22 @@
 <body>
 <main id="inicio">
   <h1>Simulador de Lentes</h1>
+  <fieldset id="lentes">
+    <legend>Lentes a mostrar (a catarata abre sempre)</legend>
+    <label><input type="checkbox" value="monofocal" checked> Monofocal</label>
+    <label><input type="checkbox" value="edof" checked> EDOF</label>
+    <label><input type="checkbox" value="multifocal" checked> Multifocal</label>
+    <label><input type="checkbox" value="torica" checked> Tórica</label>
+    <label><input type="checkbox" value="monovisao" checked> Monovisão</label>
+  </fieldset>
   <button id="iniciar">Iniciar</button>
+  <p class="aviso">Simulação ilustrativa. Os resultados variam de pessoa para pessoa.</p>
 </main>
 <script type="module">
 import * as THREE from 'three';
+import { montar } from './sequencia.js';
+
+const SEG = Number(new URLSearchParams(location.search).get('s')) || 15;  // duração do capítulo; ?s=2 para testar
 
 // WebXR nativo: no Chrome Android o Cardboard cuida da cabeça, do estéreo e da distorção das lentes do óculos.
 const renderer = new THREE.WebGLRenderer();
@@ -39,8 +57,8 @@ cena.add(camera);                 // o que é filho da câmera acompanha a cabe�
 const mundo = new THREE.Group();  // gira para recentralizar
 cena.add(mundo);
 
-// Uma malha por olho: no VR o three.js mostra a camada 1 só ao olho esquerdo e a 2 só ao direito (monovisão).
-const olhos = [1, 2].map(camada => {
+// Uma malha por olho: no VR o three.js mostra a camada 1 só ao olho esquerdo (OE) e a 2 só ao direito (OD).
+const [oe, od] = [1, 2].map(camada => {
   const m = new THREE.Mesh(undefined, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
   m.layers.set(camada);
   mundo.add(m);
@@ -60,15 +78,22 @@ function mostrar(olho, tex) {
   olho.material.needsUpdate = true;
 }
 
+// Texturas por URL: o capítulo atual e o próximo ficam carregados, o resto é descartado (memória do celular).
 const loader = new THREE.TextureLoader();
-async function carregar(url) {
-  const t = await loader.loadAsync(url);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  return t;
+const cache = new Map();
+function pegar(url) {
+  if (!cache.has(url)) cache.set(url, loader.loadAsync(url).then(t => {
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return t;
+  }));
+  return cache.get(url);
+}
+function manter(urls) {
+  for (const [url, t] of cache) if (!urls.includes(url)) { t.then(x => x.dispose()); cache.delete(url); }
 }
 
-// Legenda em 3D presa à cabeça: no VR não existe HTML sobreposto.
+// Legenda em 3D presa à cabeça (no VR não existe HTML sobreposto). Até duas linhas: a de cima menor.
 const tela = Object.assign(document.createElement('canvas'), { width: 1024, height: 256 });
 const ctx = tela.getContext('2d');
 const texLegenda = new THREE.CanvasTexture(tela);
@@ -80,21 +105,23 @@ placa.renderOrder = 1;
 placa.visible = false;
 camera.add(placa);
 
-function legenda(txt) {
+function legenda(cima, baixo) {
   ctx.clearRect(0, 0, tela.width, tela.height);
-  if (txt) {
+  if (cima || baixo) {
     ctx.fillStyle = 'rgba(0, 0, 0, .6)';
     ctx.beginPath();
-    ctx.roundRect(0, 48, 1024, 160, 40);
+    ctx.roundRect(0, 16, 1024, 224, 40);
     ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = '600 72px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(txt, 512, 128, 980);
+    ctx.font = '500 48px system-ui, sans-serif';
+    ctx.fillText(cima ?? '', 512, 78, 960);
+    ctx.font = '700 76px system-ui, sans-serif';
+    ctx.fillText(baixo ?? '', 512, 166, 960);
   }
   texLegenda.needsUpdate = true;
-  placa.visible = Boolean(txt);
+  placa.visible = Boolean(cima || baixo);
 }
 
 const frente = new THREE.Vector3();
@@ -106,6 +133,7 @@ function recentralizar() {  // gira o mundo para que o centro da imagem (+x) fiq
 const temXR = await navigator.xr?.isSessionSupported('immersive-vr').catch(() => false) ?? false;
 const espera = ms => new Promise(r => setTimeout(r, ms));
 let trava = null;
+let rodada = 0;  // muda a cada início e a cada parada: a sequência em andamento percebe e para
 
 function ajustar() {
   renderer.setSize(innerWidth, innerHeight);
@@ -114,14 +142,43 @@ function ajustar() {
 }
 
 function parar() {
+  rodada++;
   renderer.setAnimationLoop(null);
+  for (const o of [oe, od]) o.material.map = null;
+  manter([]);
   canvas.hidden = true;
   inicio.hidden = false;
-  legenda('');
+  legenda();
+  delete document.body.dataset.capitulo;
   trava?.release();
 }
 
+async function experiencia(caps, minha) {
+  const ativa = () => minha === rodada;
+  for (const c of caps.slice(0, 1)) { pegar(c.od); pegar(c.oe); }  // carrega durante a contagem
+  for (let n = 5; n > 0 && ativa(); n--) { legenda('Encaixe o celular no óculos', String(n)); await espera(1000); }
+  for (let i = 0; i < caps.length && ativa(); i++) {
+    const c = caps[i], prox = caps[i + 1];
+    const [tOD, tOE] = await Promise.all([pegar(c.od), pegar(c.oe)]);
+    if (!ativa()) return;
+    mostrar(od, tOD);
+    mostrar(oe, tOE);
+    if (i === 0) recentralizar();
+    manter([c.od, c.oe, prox?.od, prox?.oe]);
+    if (prox) { pegar(prox.od); pegar(prox.oe); }
+    document.body.dataset.capitulo = `${c.cena} · ${c.nome}`;  // ponto de observação do teste de fumaça
+    legenda(c.cena, c.nome);
+    await espera(Math.min(3000, SEG * 500));
+    if (ativa()) legenda();
+    await espera(SEG * 1000 - Math.min(3000, SEG * 500));
+  }
+  if (!ativa()) return;
+  if (renderer.xr.isPresenting) renderer.xr.getSession().end();  // o fim da sessão chama parar()
+  else parar();
+}
+
 document.querySelector('#iniciar').onclick = async () => {
+  const caps = montar([...document.querySelectorAll('#lentes input:checked')].map(i => i.value));
   if (temXR) {
     const sessao = await navigator.xr.requestSession('immersive-vr');
     renderer.xr.setFramebufferScaleFactor(XRWebGLLayer.getNativeFramebufferScaleFactor(sessao));  // nitidez: resolução nativa da tela
@@ -133,11 +190,7 @@ document.querySelector('#iniciar').onclick = async () => {
   canvas.hidden = false;
   ajustar();
   renderer.setAnimationLoop(() => renderer.render(cena, camera));
-  const tex = carregar('media/dia-monofocal.jpg');  // carrega durante a contagem
-  for (let n = 5; n > 0; n--) { legenda(`Encaixe o celular no óculos · ${n}`); await espera(1000); }
-  legenda('');
-  for (const o of olhos) mostrar(o, await tex);
-  recentralizar();
+  experiencia(caps, ++rodada);
 };
 
 addEventListener('resize', ajustar);
