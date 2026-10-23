@@ -1,6 +1,6 @@
-# 05: Cenas reais (fotos da X6)
+# 05: Cenas reais (fotos da X6, depois do MVP)
 
-**What to build:** Transformar as fotos do café (dia) e do carro (noite) nas imagens das lentes, no lugar da cena sintética. Junta as 3 exposições em HDR, recorta 220° × 180° com a cena no centro, estima a profundidade com um modelo monocular métrico ajustado às medidas da trena, fatia em camadas por dioptria e passa pela óptica do ticket 03.
+**What to build:** Transformar as fotos do café (dia) e do carro (noite) nas imagens das lentes, no lugar dos fundos do Poly Haven do MVP. Junta as 3 exposições em HDR, recorta 220° × 180° com a cena no centro, estima a profundidade com um modelo monocular métrico ajustado às medidas da trena, fatia em camadas por dioptria e passa pela óptica do ticket 03.
 
 **Blocked by:** 03 e as fotos (roteiro em `tools/kit-gravacao.html`)
 

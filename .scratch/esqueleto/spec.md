@@ -8,7 +8,8 @@ O paciente de catarata precisa escolher entre lentes (monofocal, EDOF, multifoca
 
 Um simulador em óculos VR de encaixar celular. O paciente olha ao redor de uma cena real de ~220° e vê, capítulo por capítulo, como enxergaria com catarata e depois com cada lente, de dia e à noite. A secretária escolhe as lentes antes de encaixar o celular e a sequência roda sozinha.
 
-- **MVP:** fotos da Insta360 X6 (café na calçada de dia, carro parado à noite) com a narração do Dr. Henrique em áudio. A cena sintética fica como bancada de teste da óptica, porque nela a distância de cada pixel é exata.
+- **MVP (sem gravação):** fotos 360° HDR de domínio público do Poly Haven (CC0): uma rua em Palermo de dia (`palermo_sidewalk`) e uma praça em Vignaioli à noite (`vignaioli_night`). Na frente, mesa, cardápio e notebook sintéticos em distâncias exatas, com as letras do kit. Narração do Dr. Henrique em áudio quando gravada.
+- **Depois do MVP:** fotos da Insta360 X6 (café na calçada de dia, carro parado à noite), ticket 05.
 - **Produto final:** vídeo da X6 no lugar das fotos, com a mesma óptica aplicada quadro a quadro.
 
 ## User stories
@@ -47,7 +48,8 @@ Um simulador em óculos VR de encaixar celular. O paciente olha ao redor de uma 
 
 **Óptica (fora do app)**
 - O app não calcula desfoque. Um script gera as imagens de cada lente e o app só troca as imagens.
-- A entrada do script são camadas (distância, cor linear, alfa), da mais distante para a mais próxima. Na cena sintética as camadas vêm da geometria; nas fotos, do mapa de profundidade fatiado em dioptrias.
+- A entrada do script são camadas (distância, cor linear, alfa), da mais distante para a mais próxima. No MVP, a foto HDR inteira conta como longe (10 m) e os objetos da frente têm distância exata; nas fotos da X6, as camadas virão do mapa de profundidade fatiado em dioptrias.
+- Saída pela curva de tom ACES: os realces rolam suavemente para o branco, e as luzes fortes continuam acima do branco antes do borrão, o que gera o halo.
 - Modelo: cada lente é um conjunto de componentes (foco em dioptrias, faixa nítida em torno do foco, fração da luz). O desfoque efetivo de um objeto é a distância dióptrica até o foco, menos a faixa. O tamanho do borrão é pupila × desfoque × ganho. À noite as luzes têm alta intensidade, de modo que os halos surgem do próprio desfoque (a parte da luz que a lente desvia para perto aparece como halo em volta das luzes de longe).
 - A catarata soma um véu de espalhamento, perda de contraste e amarelamento. O astigmatismo usa um borrão elíptico: o equivalente esférico fica no foco e os dois meridianos principais a ±C/2 dele.
 - Ganho inicial 2,0 (1,0 = óptica física). Motivo: a tela do óculos não mostra nada mais fino que ~20/75, então o desfoque precisa crescer na mesma proporção para manter as diferenças entre as lentes. Por isso os textos de perto e intermediários das fotos são impressos 2× maiores que o normal: com ganho 2,0, a proporção entre borrão e letra fica igual à da vida real. Calibrado pelo médico olhando no óculos.
@@ -66,7 +68,7 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 
 - Imagens em 4096 × 3352 (220° × 180°, ≈18,6 px/grau, acima dos ~16 px/grau da tela no óculos). Nomes: `media/{dia|noite}-{catarata|monofocal|edof|multifocal|astig|perto}.jpg`. A tórica corrigida e o OD da monovisão reusam a monofocal.
 
-**Cenas**
+**Cenas da gravação (depois do MVP)**
 - Dia: café na calçada. Longe a 6 m ou mais (placas, fachadas), intermediário a ~66 cm (notebook), perto a 40 cm (cardápio).
 - Noite: banco do motorista de um carro parado. Longe (faróis, postes, semáforo), intermediário a ~70 cm (painel, GPS), perto a 40 cm (celular).
 - Roteiro de gravação, medidas e adereços com letras graduadas: `tools/kit-gravacao.html` (o PDF é gerado dele).
@@ -88,7 +90,7 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 - Um bom teste verifica comportamento externo, não detalhes internos.
 - Costura 1: montagem da sequência a partir da seleção de lentes (lógica pura), testada com o test runner nativo do Node.
 - Costura 2: processamento óptico, com verificações embutidas no script (sem borrão onde a lente foca, borrão crescente com o desfoque, frações somando 1, dimensões das imagens) e uma folha de contato com todas as variantes para revisão visual.
-- Costura 3: a página num navegador headless, sem WebXR (carrega sem erros, avança os capítulos). A aceitação final é o teste do médico com o óculos.
+- Costura 3: a página num navegador headless, sem WebXR (carrega sem erros, avança os capítulos, a vista da frente bate com a projeção esperada da imagem e não está espelhada). A aceitação final é o teste do médico com o óculos.
 
 ## Fora do escopo
 

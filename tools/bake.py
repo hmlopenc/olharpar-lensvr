@@ -1,14 +1,16 @@
-"""Gera as imagens de cada lente a partir da cena sintética: equirretangular parcial de 220° × 180°.
+"""Gera as imagens de cada lente: equirretangular parcial de 220° × 180°.
 
 Uso: python3 tools/bake.py [folha_de_contato.jpg]   (grava media/{dia|noite}-{lente}.jpg)
-Os parâmetros clínicos ficam em tools/lentes.py.
+Os parâmetros clínicos ficam em tools/lentes.py. Precisa de numpy, Pillow, scipy e opencv.
 
-A cena é uma sala vista de quem está sentado, com camadas em distâncias conhecidas:
-rua a 6 m, sala ~3 m, mesa 0,7 m, notebook 0,66 m, cardápio 0,40 m.
+MVP sem gravação: o fundo é uma foto 360° HDR real do Poly Haven (CC0, domínio público), baixada uma vez
+para ~/.cache/olharpar-lensvr. Na frente, objetos em distâncias exatas: mesa 0,7 m, notebook 0,66 m e
+cardápio 0,40 m, com as mesmas letras do kit de gravação (tools/kit-gravacao.html).
 Convenção (a mesma do three.js): centro da imagem = +x (frente), +y = cima, +z = direita.
 O campo horizontal sai da proporção da imagem: CAMPO = 180 × W / H.
 """
-import os, sys, tempfile
+import os, sys, tempfile, urllib.request
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy.ndimage import gaussian_filter, maximum_filter, zoom
@@ -20,11 +22,13 @@ W, H = 4096, 3352      # ≈18,6 px/grau, acima dos ~16 px/grau da tela no ócul
 FADE = 8               # graus de degradê para o preto em cada borda lateral
 PX_GRAU = W / CAMPO
 VEU_GRAUS = 3.0        # largura (sigma) do véu da catarata
-OMBRO = (0.7, 40.0)    # noite: acima de 0,7 comprime em log até a luz mais forte (40); o halo aparece como disco
-                       # mais fraco em volta da luz, em vez de tudo saturar em branco
+PT = 0.0352778         # cm por ponto tipográfico
+CACHE = os.path.expanduser("~/.cache/olharpar-lensvr")
+# Fotos 360° HDR do Poly Haven (CC0): (nome, longitude que fica na frente em graus, exposição)
+FUNDOS = {"dia": ("palermo_sidewalk", -10, 1.0), "noite": ("vignaioli_night", -35, 0.5)}
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FONTE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONTE_N = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONTE = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"   # a fonte do kit de gravação
+FONTE_N = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 
 
 def lin(img):
@@ -33,12 +37,9 @@ def lin(img):
     return np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
 
 
-def srgb(a, noite=False):
-    if noite:  # comprime os realces pela luminância máxima do pixel, preservando a cor
-        k, L = OMBRO
-        m = np.maximum(a.max(-1, keepdims=True), 1e-6)
-        a = a * np.where(m > k, k + (1 - k) * np.log1p(np.maximum(m - k, 0) / 0.5) / np.log1p((L - k) / 0.5), m) / m
-    a = np.clip(a / np.maximum(1, a.max(-1, keepdims=True)), 0, 1)  # satura preservando a cor (neon continua colorido)
+def srgb(a):
+    """Linear HDR -> sRGB pela curva ACES (aproximação de Narkowicz): os realces rolam suavemente para o branco."""
+    a = np.clip(a * (2.51 * a + 0.03) / (a * (2.43 * a + 0.59) + 0.14), 0, 1)
     return np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
 
 
@@ -66,70 +67,54 @@ def texto(d, xy, s, tam, cor, negrito=False, anchor="la"):
 
 # ---------- texturas (sRGB, desenhadas em alta resolução) ----------
 
-def fachada(noite):
-    """Frente da sala aberta para a rua: 5 m x 2,7 m a 6 m. 400 px/m."""
-    ppm = 400
-    img = Image.new("RGB", (5 * ppm, int(2.7 * ppm)), (52, 58, 74) if noite else (196, 186, 168))
-    em = Image.new("L", img.size, 0)  # emissão noturna: intensidade = 40 * (valor/255)^2
-    d, e = ImageDraw.Draw(img), ImageDraw.Draw(em)
-    # calçada e vitrines
-    d.rectangle([0, 920, 2000, 1080], fill=(40, 40, 44) if noite else (150, 150, 150))
-    for x0, x1 in ((80, 900), (1100, 1920)):
-        d.rectangle([x0, 380, x1, 900], fill=(90, 70, 40) if noite else (120, 150, 170))
-        e.rectangle([x0, 380, x1, 900], fill=60 if noite else 0)
-    # letreiros (0,35 m e 0,30 m)
-    d.rectangle([120, 120, 860, 320], fill=(30, 30, 30) if noite else (250, 240, 220))
-    texto(d, (490, 220), "PADARIA", 160, (255, 170, 60) if noite else (120, 40, 20), True, "mm")
-    if noite:
-        texto(e, (490, 220), "PADARIA", 160, 160, True, "mm")
-    d.rectangle([1140, 140, 1880, 300], fill=(20, 40, 25) if noite else (255, 255, 255))
-    texto(d, (1510, 220), "FARMÁCIA", 120, (80, 255, 120) if noite else (20, 120, 50), True, "mm")
-    if noite:
-        texto(e, (1510, 220), "FARMÁCIA", 120, 160, True, "mm")
-    # painel do ponto de ônibus: linhas de 15, 8, 5 e 3,5 cm
-    d.rectangle([700, 420, 1300, 880], fill=(245, 245, 240))
-    if noite:
-        e.rectangle([700, 420, 1300, 880], fill=38)  # painel iluminado ~0,9: superfície legível, não fonte de luz
-    y = 440
-    for linha, cm in (("LINHA 309", 15), ("Recreio  10 min", 8), ("Barra  15 min  ·  Tijuca  25 min", 5),
-                      ("Horários sujeitos a alteração", 3.5)):
-        texto(d, (1000, y), linha, int(cm * 4 / 0.73), (20, 20, 20), cm >= 8, "ma")
-        y += int(cm * 4 / 0.73 * 1.35)
-    if noite:  # postes e faróis: fontes pequenas e muito intensas
-        for x, yy, r in ((60, 60, 14), (1940, 60, 14), (420, 980, 16), (560, 980, 16)):
-            d.ellipse([x - r, yy - r, x + r, yy + r], fill=(255, 240, 210))
-            e.ellipse([x - r, yy - r, x + r, yy + r], fill=255)
-    return img, em
+def fundo(cena):
+    """Foto 360° HDR recortada em CAMPO graus em torno da frente, em rgb linear."""
+    nome, frente, exposicao = FUNDOS[cena]
+    arq = os.path.join(CACHE, f"{nome}_8k.hdr")
+    if not os.path.exists(arq):
+        os.makedirs(CACHE, exist_ok=True)
+        urllib.request.urlretrieve(f"https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/{nome}_8k.hdr", arq)
+    hdr = cv2.imread(arq, cv2.IMREAD_UNCHANGED)[..., ::-1]           # BGR -> RGB, float32
+    w0 = hdr.shape[1]
+    hdr = np.roll(hdr, int(round(-frente / 360 * w0)), axis=1)      # a longitude "frente" vai para o centro
+    n = int(round(CAMPO / 360 * w0))
+    hdr = np.ascontiguousarray(hdr[:, (w0 - n) // 2:(w0 + n) // 2])
+    return cv2.resize(hdr, (W, H), interpolation=cv2.INTER_AREA).astype(np.float32) * exposicao  # INTER_AREA conserva a energia das luzes
+
+
+def escrever(d, ppc, x, y, itens, cor, direita=None):
+    """Escreve linhas com tamanhos em pontos reais (o mesmo tamanho físico do kit)."""
+    for esq, dir_, pt, neg in itens:
+        tam = int(pt * PT * ppc)
+        texto(d, (x, y), esq, tam, cor, neg)
+        if dir_:
+            texto(d, (direita, y), dir_, tam, cor, neg, "ra")
+        y += int(tam * 1.25)
 
 
 def notebook(noite):
-    """Tela de 30 x 19 cm a 66 cm. 60 px/cm. A tela emite luz própria."""
+    """Tela de 30 x 19 cm a 66 cm, com a página 3 do kit. 60 px/cm. A tela emite luz própria."""
     ppc = 60
     img = Image.new("RGB", (30 * ppc, 19 * ppc), (25, 25, 28))
     d = ImageDraw.Draw(img)
     d.rectangle([40, 40, 30 * ppc - 40, 19 * ppc - 40], fill=(250, 250, 248))
-    y = 70
-    for linha, cm, neg in (("Notícias", 2, True), ("Rio de Janeiro: sol com nuvens, 28 °C", 1, False),
-                           ("Trânsito livre na Avenida das Américas", 0.6, False),
-                           ("Feira de artesanato no domingo, das 9 h às 17 h", 0.4, False)):
-        texto(d, (100, y), linha, int(cm * ppc / 0.73), (20, 20, 30), neg)
-        y += int(cm * ppc / 0.73 * 1.5)
+    escrever(d, ppc, int(1.2 * ppc), int(1.4 * ppc), [
+        ("NOTÍCIAS", "", 79, True), ("Rio: sol, 28 °C", "", 59, False), ("Trânsito livre na Barra", "", 46, False),
+        ("Feira orgânica no sábado, 8h", "", 36, False), ("Cinema: sessão especial às 19h30", "", 30, False),
+        ("Previsão: chuva fraca no fim da tarde de domingo", "", 23, False)], (20, 20, 30))
     return img
 
 
 def cardapio(noite):
-    """Cardápio de 15 x 21 cm a 40 cm, na mão. 60 px/cm."""
+    """Cardápio de 15 x 21 cm a 40 cm, na mão, com as linhas da página 2 do kit. 60 px/cm."""
     ppc = 60
-    img = Image.new("RGB", (15 * ppc, 21 * ppc), (252, 248, 236))
+    img = Image.new("RGB", (15 * ppc, 21 * ppc), (246, 239, 225))
     d = ImageDraw.Draw(img)
-    d.rectangle([20, 20, 15 * ppc - 20, 21 * ppc - 20], outline=(120, 80, 40), width=8)
-    y = 70
-    for linha, cm, neg in (("CARDÁPIO", 1.5, True), ("Café expresso   R$ 6", 0.6, False),
-                           ("Pão de queijo   R$ 8", 0.6, False), ("Suco de laranja   R$ 10", 0.6, False),
-                           ("Pergunte pelas opções sem glúten", 0.35, False),
-                           ("Aceitamos cartões e Pix", 0.25, False)):
-        texto(d, (15 * ppc // 2, y), linha, int(cm * ppc / 0.73), (40, 25, 15), neg, "ma")
-        y += int(cm * ppc / 0.73 * 1.7)
+    texto(d, (15 * ppc // 2, int(2.4 * ppc)), "CARDÁPIO", int(72 * PT * ppc), (27, 27, 27), True, "ma")
+    escrever(d, ppc, int(0.6 * ppc), int(6 * ppc), [
+        ("Expresso", "R$ 6", 48, False), ("Pão de queijo", "R$ 8", 36, False), ("Suco de laranja", "R$ 10", 28, False),
+        ("Misto quente na chapa", "R$ 14", 22, False), ("Tapioca com queijo coalho", "R$ 16", 18, False),
+        ("Pergunte pelas opções sem glúten e sem lactose.", "", 14, False)], (27, 27, 27), int(14.4 * ppc))
     return img
 
 
@@ -159,51 +144,17 @@ def cartao(D, centro, largura, altura, tex_rgb, ganho):
     return rgb, dentro.astype(np.float32)
 
 
-def sala(D, noite):
-    """Caixa x[-3,6] y[-1.2,1.5] z[-2.5,2.5]. Devolve as camadas (rua, sala)."""
-    lim = ((-3.0, 6.0), (-1.2, 1.5), (-2.5, 2.5))
-    t = np.full(D.shape[:2], np.inf, np.float32)
-    face = np.zeros(D.shape[:2], np.int8)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        for i, (lo, hi) in enumerate(lim):
-            for k, b in ((0, lo), (1, hi)):
-                ti = b / D[..., i]
-                m = (ti > 0) & (ti < t)
-                t[m], face[m] = ti[m], 2 * i + k
-    p = D * t[..., None]
-    x, y, z = p[..., 0], p[..., 1], p[..., 2]
-    luz = 0.05 if noite else 1.0
-    rgb = np.zeros(D.shape, np.float32)
-    cor = {0: (0.42, 0.36, 0.30), 2: (0.20, 0.16, 0.13), 3: (0.70, 0.70, 0.68), 4: (0.50, 0.44, 0.36), 5: (0.48, 0.42, 0.35)}
-    for f, c in cor.items():
-        rgb[face == f] = np.array(c, np.float32) * luz
-    chao = face == 2  # piso em ladrilhos de 50 cm com rejunte
-    rejunte = (np.abs((x / 0.5) % 1 - 0.5) > 0.47) | (np.abs((z / 0.5) % 1 - 0.5) > 0.47)
-    xadrez = ((np.floor(x / 0.5) + np.floor(z / 0.5)) % 2 == 0)
-    rgb[chao & xadrez] *= 1.35
-    rgb[chao & rejunte] = np.array((0.08, 0.08, 0.08), np.float32) * luz
-    rodape = np.isin(face, (0, 4, 5)) & (y < -1.08)
-    rgb[rodape] = np.array((0.12, 0.10, 0.09), np.float32) * luz
-    if noite:  # luminária pendente no teto, à esquerda
-        lamp = (face == 3) & ((x - 1.0) ** 2 + (z + 1.2) ** 2 < 0.06 ** 2)
-        rgb[lamp] = 30.0
-    frente = face == 1
-    img, em = fachada(noite)
-    tex = lin(img) * ((0.10 if noite else 1.0) + 40 * ((np.asarray(em, np.float32) / 255) ** 2)[..., None])
-    th, tw = tex.shape[:2]
-    rua = np.zeros(D.shape, np.float32)
-    rua[frente] = amostrar(tex, (z[frente] + 2.5) / 5 * tw, (1.5 - y[frente]) / 2.7 * th)
-    return (rua, frente.astype(np.float32)), (rgb, (~frente).astype(np.float32))
-
-
 def mesa(D, noite):
     """Tampo a 45 cm abaixo dos olhos, x[0.25,1.0] z[-0.7,0.7]."""
     with np.errstate(divide="ignore", invalid="ignore"):
         t = -0.45 / D[..., 1]
     p = D * t[..., None]
     dentro = (t > 0) & (p[..., 0] > 0.25) & (p[..., 0] < 1.0) & (np.abs(p[..., 2]) < 0.7)
+    x, z = p[..., 0], p[..., 2]
+    veio = 0.85 + 0.15 * np.sin(z * 90 + 3 * np.sin(x * 7 + z * 11))       # veios da madeira
+    veio = np.where(np.abs((z / 0.14) % 1 - 0.5) > 0.485, 0.45, veio)        # frestas entre tábuas de 14 cm
     rgb = np.zeros(D.shape, np.float32)
-    rgb[dentro] = np.array((0.30, 0.17, 0.08), np.float32) * (0.06 if noite else 1.0)
+    rgb[dentro] = np.array((0.20, 0.12, 0.065), np.float32) * veio[dentro, None] * (0.06 if noite else 0.9)
     return rgb, dentro.astype(np.float32)
 
 
@@ -215,14 +166,11 @@ def posicao(dist, azim, elev):
 def construir_cena(noite):
     """Camadas da mais distante para a mais próxima: (distância em m, rgb linear, alfa)."""
     D = direcoes()
-    rua, sala_ = sala(D, noite)
-    nb_img, cd_img = notebook(noite), cardapio(noite)
     return [
-        (6.0, *rua),
-        (3.0, *sala_),
-        (0.7, *mesa(D, noite)),
-        (0.66, *cartao(D, posicao(0.66, 25, -32), 0.30, 0.19, nb_img, 0.9)),
-        (0.40, *cartao(D, posicao(0.40, -12, -30), 0.15, 0.21, cd_img, 0.30 if noite else 0.9)),
+        (10.0, fundo("noite" if noite else "dia"), np.ones((H, W), np.float32)),  # ponytail: o fundo inteiro conta
+        (0.7, *mesa(D, noite)),                                                    # como longe (10 m); a mesa cobre o chão
+        (0.66, *cartao(D, posicao(0.66, 25, -32), 0.30, 0.19, notebook(noite), 0.9)),  # perto da câmera
+        (0.40, *cartao(D, posicao(0.40, -12, -30), 0.15, 0.21, cardapio(noite), 0.15 if noite else 0.9)),
     ]
 
 
@@ -316,7 +264,7 @@ def verificar(cena, imgs, nitida, rua):
     assert cat[..., 2].mean() / cat[..., 0].mean() < mono[..., 2].mean() / mono[..., 0].mean(), "catarata amarela"
     assert cat.std() < mono.std(), "catarata com menos contraste"
     if cena == "noite":  # halo: brilho num anel em volta das luzes intensas
-        luz = nitida.max(-1) > 5
+        luz = nitida.max(-1) > 50  # núcleos das lâmpadas; fachadas iluminadas ficam abaixo disso
         anel = maximum_filter(luz, 25) & ~maximum_filter(luz, 7)
         brilho = lambda n: imgs[n].max(-1)[anel].mean()
         assert brilho("multifocal") > 1.5 * brilho("monofocal"), "a multifocal precisa de halo à noite"
@@ -329,13 +277,13 @@ def degrade(rgb):
     return rgb * (f * f * (3 - 2 * f))[None, :, None]
 
 
-def oito_bits(rgb, noite=False):
-    return (srgb(rgb, noite) * 255 + 0.5).astype(np.uint8)
+def oito_bits(rgb):
+    return (srgb(rgb) * 255 + 0.5).astype(np.uint8)
 
 
-def salvar(rgb, nome, noite=False):
+def salvar(rgb, nome):
     os.makedirs(os.path.join(RAIZ, "media"), exist_ok=True)
-    Image.fromarray(oito_bits(degrade(rgb), noite)).save(os.path.join(RAIZ, "media", nome), quality=90)
+    Image.fromarray(oito_bits(degrade(rgb))).save(os.path.join(RAIZ, "media", nome), quality=90)
 
 
 def folha_de_contato(recortes, caminho, w=400, h=300):
@@ -356,21 +304,23 @@ def folha_de_contato(recortes, caminho, w=400, h=300):
 
 if __name__ == "__main__":
     folha = sys.argv[1] if len(sys.argv) > 1 else os.path.join(tempfile.gettempdir(), "folha-de-contato.jpg")
-    regioes = {"longe": (2048, 1620), "intermediário": (2513, 2272), "perto": (1825, 2086)}  # centros em px
+    perto = {"intermediário": (2486, 2235), "perto": (1825, 2160)}  # centros dos recortes em px
+    regioes = {"dia": {"longe": (2700, 1620), **perto}, "noite": {"longe": (2700, 1500), **perto}}
     recortes = {}
     for cena, noite in (("dia", False), ("noite", True)):
         camadas = construir_cena(noite)
         nitida = compor(camadas)
-        # autoverificação da cena: frente = rua, cardápio onde foi posto, luzes à noite
-        assert camadas[0][2][H // 2 - 20, W // 2] == 1, "o centro da imagem deve mostrar a rua"
+        # autoverificação da cena: fundo cobrindo tudo, cardápio onde foi posto, luzes intensas à noite
+        assert camadas[0][2].min() == 1, "o fundo deve cobrir a imagem inteira"
         lon, lat = int((0.5 - 12 / CAMPO) * W), int((0.5 + 30 / 180) * H)
-        assert camadas[4][2][lat, lon] == 1, "o cardápio deve estar a 12° à esquerda e 30° abaixo"
-        assert (nitida.max(-1) > 1).sum() > (100 if noite else -1), "a cena noturna precisa de luzes intensas"
+        assert camadas[-1][2][lat, lon] == 1, "o cardápio deve estar a 12° à esquerda e 30° abaixo"
+        assert (nitida.max(-1) > 5).sum() > (100 if noite else -1), "a cena noturna precisa de luzes intensas"
         imgs = {nome: catarata(desfocar(camadas, l, PUPILA_MM[cena]), l) for nome, l in LENTES.items()}
-        verificar(cena, imgs, nitida, camadas[0][2] == 1)
+        longe = ~maximum_filter(sum(a for _, _, a in camadas[1:]) > 0, 61)  # só fundo, longe das bordas dos objetos
+        verificar(cena, imgs, nitida, longe)
         for nome, img in imgs.items():
-            salvar(img, f"{cena}-{nome}.jpg", noite)
-        recortes[cena] = {n: {r: oito_bits(i[y - 150:y + 150, x - 200:x + 200], noite) for r, (x, y) in regioes.items()}
+            salvar(img, f"{cena}-{nome}.jpg")
+        recortes[cena] = {n: {r: oito_bits(i[y - 150:y + 150, x - 200:x + 200]) for r, (x, y) in regioes[cena].items()}
                           for n, i in {"nítida": nitida, **imgs}.items()}
         print(cena, "ok")
     folha_de_contato(recortes, folha)

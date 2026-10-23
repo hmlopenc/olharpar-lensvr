@@ -42,15 +42,28 @@ finally:
 
 assert not erros, erros
 img = {k: np.asarray(Image.open(v).convert("RGB"), np.int16) for k, v in FOTO.items()}
-# Sem espelhamento e com a frente no centro: a PADARIA (vermelho-escuro) fica à esquerda da FARMÁCIA (verde).
-r, g, b = (img["monofocal"][..., i] for i in range(3))
-verde = (g > r + 50) & (g > b + 30)
-vermelho = (r > g + 50) & (r > b + 50) & (r < 170)
-assert verde.sum() > 50 and vermelho.sum() > 50, "fachada não aparece na frente"
-xv, xr = np.nonzero(verde)[1].mean(), np.nonzero(vermelho)[1].mean()
-assert xr < xv, f"imagem espelhada: PADARIA em x={xr:.0f}, FARMÁCIA em x={xv:.0f}"
-assert abs((xr + xv) / 2 - img["monofocal"].shape[1] / 2) < img["monofocal"].shape[1] * 0.1, "frente fora do centro"
-# Fora do VR aparece o olho esquerdo; na monovisão ele é o de perto, então a fachada ao longe fica borrada.
+
+
+def vista_esperada(jpg, h, w, fov_v=75):
+    """Projeta a imagem equirretangular parcial numa câmera olhando para +x, como o app mostra fora do VR."""
+    src = np.asarray(Image.open(jpg).convert("L"), np.float32)
+    campo = np.pi * src.shape[1] / src.shape[0]
+    t = np.tan(np.radians(fov_v / 2))
+    v, u = np.mgrid[0:h, 0:w] + 0.5
+    y, z = (1 - 2 * v / h) * t, (2 * u / w - 1) * t * w / h
+    lon, lat = np.arctan2(z, 1), np.arctan2(y, np.hypot(1, z))
+    col = ((lon / campo + 0.5) * src.shape[1]).astype(int).clip(0, src.shape[1] - 1)
+    lin = ((0.5 - lat / np.pi) * src.shape[0]).astype(int).clip(0, src.shape[0] - 1)
+    return src[lin, col]
+
+
+# Frente no centro e sem espelhamento: a tela bate com a projeção esperada da imagem, e não com o espelho dela.
+reduz = lambda a: np.asarray(Image.fromarray(a.astype(np.uint8)).resize((193, 90), Image.BOX), np.float32).ravel()
+tela = reduz(img["monofocal"].mean(-1))
+esperada = vista_esperada(os.path.join(RAIZ, "media", "dia-monofocal.jpg"), *img["monofocal"].shape[:2])
+corr, corr_espelho = (np.corrcoef(tela, reduz(e))[0, 1] for e in (esperada, esperada[:, ::-1]))
+assert corr > 0.9 and corr > corr_espelho + 0.2, f"vista da frente: correlação {corr:.2f}, espelhada {corr_espelho:.2f}"
+# Fora do VR aparece o olho esquerdo; na monovisão ele é o de perto, então o fundo ao longe fica borrado.
 nitidez = lambda a: np.square(np.diff(a[150:330, 500:1050].mean(-1), axis=1)).mean()  # energia do gradiente cai com o borrão
 assert nitidez(img["monovisao"]) < 0.8 * nitidez(img["monofocal"]), "monovisão: OE devia mostrar a imagem de perto"
 print("smoke ok")
