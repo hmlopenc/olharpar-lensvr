@@ -11,6 +11,7 @@ export const LENTES = {
 };
 
 const CENAS = { dia: 'De dia', noite: 'À noite' };
+const FORMATO = { dia: 'mp4', noite: 'jpg' };  // de dia, o trecho de 10 s da X6; à noite, a foto HDR do Poly Haven
 
 export function montar(marcadas) {
   const caps = [];
@@ -18,7 +19,7 @@ export function montar(marcadas) {
     const lista = [['Com catarata', 'catarata']];  // a catarata abre cada cena
     for (const [id, capitulos] of Object.entries(LENTES)) if (marcadas.includes(id)) lista.push(...capitulos);
     for (const [nome, od, oe = od] of lista) {
-      caps.push({ cena: quando, nome, od: `media/${cena}-${od}.jpg`, oe: `media/${cena}-${oe}.jpg` });
+      caps.push({ cena: quando, nome, od: `media/${cena}-${od}.${FORMATO[cena]}`, oe: `media/${cena}-${oe}.${FORMATO[cena]}` });
     }
   }
   return caps;

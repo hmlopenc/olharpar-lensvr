@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SAIDA = sys.argv[1] if len(sys.argv) > 1 else "."
 THREE_DIR = os.environ.get("THREE_DIR")
-FOTO = {c: os.path.join(SAIDA, f"smoke-{c}.png") for c in ("monofocal", "monovisao")}
+FOTO = {c: os.path.join(SAIDA, f"smoke-{c}.png") for c in ("video1", "video2", "monofocal", "monovisao")}
 
 servidor = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=RAIZ,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -26,12 +26,20 @@ try:
         if THREE_DIR:
             pag.route("https://cdn.jsdelivr.net/npm/three@*/build/*", lambda r: r.fulfill(
                 path=os.path.join(THREE_DIR, r.request.url.rsplit("/", 1)[1]), content_type="text/javascript"))
-        pag.goto("http://localhost:8765/?s=10")
+        pag.goto("http://localhost:8765/?s=30")  # no SwiftShader, cada quadro com vídeo de 3040 × 2880 leva segundos
         for lente in ("edof", "multifocal", "torica"):  # sobram catarata, monofocal e monovisão em cada cena
             pag.uncheck(f"#lentes input[value={lente}]")
         pag.click("#iniciar")
-        for cap, foto in (("De dia · Lente monofocal", "monofocal"), ("De dia · Monovisão", "monovisao")):
-            pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=60000)
+        # De dia é vídeo: duas fotos do mesmo capítulo têm de diferir (o vídeo está tocando).
+        cap = "De dia · Lente monofocal"
+        pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=120000)
+        pag.wait_for_timeout(3300)
+        pag.screenshot(path=FOTO["video1"])
+        pag.wait_for_timeout(1500)
+        pag.screenshot(path=FOTO["video2"])
+        assert pag.get_attribute("body", "data-capitulo") == cap, "as fotos do vídeo saíram atrasadas"
+        for cap, foto in (("À noite · Lente monofocal", "monofocal"), ("À noite · Monovisão", "monovisao")):
+            pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=120000)
             pag.wait_for_timeout(3300)  # a legenda some depois de 3 s
             pag.screenshot(path=FOTO[foto])  # no SwiftShader cada quadro demora: confere se ainda é o mesmo capítulo
             assert pag.get_attribute("body", "data-capitulo") == cap, f"a foto de {cap} saiu atrasada"
@@ -70,10 +78,11 @@ def vista_esperada(jpg, h, w, fov_v=75):
 # Frente no centro e sem espelhamento: a tela bate com a projeção esperada da imagem, e não com o espelho dela.
 reduz = lambda a: np.asarray(Image.fromarray(a.astype(np.uint8)).resize((193, 90), Image.BOX), np.float32).ravel()
 tela = reduz(img["monofocal"].mean(-1))
-esperada = vista_esperada(os.path.join(RAIZ, "media", "dia-monofocal.jpg"), *img["monofocal"].shape[:2])
+esperada = vista_esperada(os.path.join(RAIZ, "media", "noite-monofocal.jpg"), *img["monofocal"].shape[:2])
 corr, corr_espelho = (np.corrcoef(tela, reduz(e))[0, 1] for e in (esperada, esperada[:, ::-1]))
 assert corr > 0.9 and corr > corr_espelho + 0.2, f"vista da frente: correlação {corr:.2f}, espelhada {corr_espelho:.2f}"
 # Fora do VR aparece o olho esquerdo; na monovisão ele é o de perto, então o fundo ao longe fica borrado.
 nitidez = lambda a: np.square(np.diff(a[150:330, 500:1050].mean(-1), axis=1)).mean()  # energia do gradiente cai com o borrão
 assert nitidez(img["monovisao"]) < 0.8 * nitidez(img["monofocal"]), "monovisão: OE devia mostrar a imagem de perto"
+assert np.abs(img["video1"] - img["video2"]).mean() > 0.3, "o vídeo do dia não está tocando"
 print("smoke ok")

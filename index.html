@@ -40,7 +40,8 @@
 import * as THREE from 'three';
 import { montar } from './sequencia.js';
 
-const SEG = Number(new URLSearchParams(location.search).get('s')) || 15;  // duração do capítulo; ?s=2 para testar
+const PARAM_S = new URLSearchParams(location.search).get('s');  // ?s=2 encurta os capítulos para testar
+const SEG = Number(PARAM_S) || 15;  // capítulo de foto; o de vídeo dura o vídeo
 
 // WebXR nativo: no Chrome Android o Cardboard cuida da cabeça, do estéreo e da distorção das lentes do óculos.
 const renderer = new THREE.WebGLRenderer();
@@ -70,7 +71,8 @@ const [oe, od] = [1, 2].map(camada => {
 // A imagem cobre 180° na vertical; o campo horizontal sai da proporção dela.
 // Coluna u da imagem -> longitude (u - 0,5) * campo, com o centro em +x (frente), como no bake.py.
 function mostrar(olho, tex) {
-  const campo = Math.PI * tex.image.width / tex.image.height;
+  const img = tex.image;
+  const campo = Math.PI * (img.videoWidth || img.width) / (img.videoHeight || img.height);
   if (olho.userData.campo !== campo) {
     olho.geometry.dispose();
     olho.geometry = new THREE.SphereGeometry(10, 96, 64, Math.PI + campo / 2, -campo);
@@ -80,19 +82,30 @@ function mostrar(olho, tex) {
   olho.material.needsUpdate = true;
 }
 
-// Texturas por URL: o capítulo atual e o próximo ficam carregados, o resto é descartado (memória do celular).
+// Texturas por URL (foto ou vídeo): o capítulo atual e o próximo ficam carregados, o resto é descartado (memória do celular).
 const loader = new THREE.TextureLoader();
 const cache = new Map();
+function carregar(url) {
+  if (!url.endsWith('.mp4')) return loader.loadAsync(url);
+  const v = Object.assign(document.createElement('video'), { src: url, muted: true, loop: true, playsInline: true, preload: 'auto' });
+  return new Promise((ok, falha) => {  // canplay volta a disparar a cada volta ao início: só o primeiro vale
+    v.addEventListener('canplay', () => ok(new THREE.VideoTexture(v)), { once: true });
+    v.onerror = falha;
+  });
+}
 function pegar(url) {
-  if (!cache.has(url)) cache.set(url, loader.loadAsync(url).then(t => {
+  if (!cache.has(url)) cache.set(url, carregar(url).then(t => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return t;
-  }, () => { throw new Error(`a imagem ${url} não carregou`); }));
+  }, () => { throw new Error(`o arquivo ${url} não carregou`); }));
   return cache.get(url);
 }
 function manter(urls) {
-  for (const [url, t] of cache) if (!urls.includes(url)) { t.then(x => x.dispose(), () => {}); cache.delete(url); }
+  for (const [url, t] of cache) if (!urls.includes(url)) {
+    t.then(x => { if (x.isVideoTexture) { x.image.pause(); x.image.removeAttribute('src'); x.image.load(); } x.dispose(); }, () => {});
+    cache.delete(url);
+  }
 }
 
 // Legenda em 3D presa à cabeça (no VR não existe HTML sobreposto). Até duas linhas: a de cima menor.
@@ -165,14 +178,18 @@ async function experiencia(caps, minha) {
     if (!ativa()) return;
     mostrar(od, tOD);
     mostrar(oe, tOE);
+    const videos = [...new Set([tOD, tOE])].filter(t => t.isVideoTexture).map(t => t.image);
+    for (const v of videos) v.currentTime = 0;
+    await Promise.all(videos.map(v => v.play().catch(e => { if (ativa()) throw e; })));  // os dois olhos juntos (monovisão)
     if (i === 0) recentralizar();
     manter([c.od, c.oe, prox?.od, prox?.oe]);
     if (prox) { pegar(prox.od); pegar(prox.oe); }
     document.body.dataset.capitulo = `${c.cena} · ${c.nome}`;  // ponto de observação do teste de fumaça
     legenda(c.cena, c.nome);
-    await espera(Math.min(3000, SEG * 500));
+    const ms = videos.length && !PARAM_S ? videos[0].duration * 1000 : SEG * 1000;
+    await espera(Math.min(3000, ms / 2));
     if (ativa()) legenda();
-    await espera(SEG * 1000 - Math.min(3000, SEG * 500));
+    await espera(ms - Math.min(3000, ms / 2));
   }
   if (!ativa()) return;
   if (renderer.xr.isPresenting) renderer.xr.getSession().end();  // o fim da sessão chama parar()

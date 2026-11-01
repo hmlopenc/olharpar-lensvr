@@ -13,7 +13,7 @@ import os, sys, tempfile, urllib.request
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from scipy.ndimage import gaussian_filter, maximum_filter, zoom
+from scipy.ndimage import gaussian_filter, maximum_filter
 from scipy.signal import oaconvolve
 from lentes import GANHO, LENTES, PUPILA_MM
 
@@ -25,7 +25,7 @@ VEU_GRAUS = 3.0        # largura (sigma) do véu da catarata
 PT = 0.0352778         # cm por ponto tipográfico
 CACHE = os.path.expanduser("~/.cache/olharpar-lensvr")
 # Fotos 360° HDR do Poly Haven (CC0): (nome, longitude que fica na frente em graus, exposição)
-FUNDOS = {"dia": ("palermo_sidewalk", -10, 1.0), "noite": ("vignaioli_night", -35, 0.5)}
+FUNDOS = {"noite": ("vignaioli_night", -35, 0.5)}  # de dia, o vídeo da X6 (tools/video.py)
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTE = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"   # a fonte do kit de gravação
 FONTE_N = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
@@ -37,9 +37,9 @@ def lin(img):
     return np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
 
 
-def srgb(a):
-    """Linear HDR -> sRGB pela curva ACES (aproximação de Narkowicz): os realces rolam suavemente para o branco."""
-    a = np.clip(a * (2.51 * a + 0.03) / (a * (2.43 * a + 0.59) + 0.14), 0, 1)
+def srgb(a, aces=True):
+    """Linear -> sRGB. Com aces (fotos HDR), a curva ACES de Narkowicz rola os realces suavemente para o branco."""
+    a = np.clip(a * (2.51 * a + 0.03) / (a * (2.43 * a + 0.59) + 0.14) if aces else a, 0, 1)
     return np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
 
 
@@ -198,9 +198,9 @@ def disco(d_eixo, d_perp, eixo=0.0):
     return (k / k.sum()).astype(np.float32)
 
 
-def psf(lente, V, pupila_mm):
+def psf(lente, V, pupila_mm, px_grau=PX_GRAU):
     """Borrão de um objeto com vergência V (D): soma dos componentes pesados pela fração da luz. None = nítido."""
-    px_por_D = pupila_mm / 1000 * GANHO * np.degrees(1) * PX_GRAU
+    px_por_D = pupila_mm / 1000 * GANHO * np.degrees(1) * px_grau
     basal, cil, eixo = lente.get("desfoque_basal", 0.0), lente.get("cilindro", 0.0), lente.get("eixo", 0)
     d = lambda foco, faixa: (max(0.0, abs(V - foco) - faixa) + basal) * px_por_D
     partes = [(fr, disco(d(f - cil / 2, fx), d(f + cil / 2, fx), eixo)) for f, fx, fr in lente["componentes"]]
@@ -238,17 +238,19 @@ def desfocar(camadas, lente, pupila_mm):
     return out
 
 
-def catarata(img, lente):
+def catarata(img, lente, px_grau=PX_GRAU):
     """Véu, contraste e amarelamento. Lentes sem esses campos passam intactas."""
     v = lente.get("veu", 0.0)
     if v:  # espalhamento largo, calculado em 1/8 da resolução (o véu é liso)
         p = 8
-        peq = img.reshape(H // p, p, W // p, p, 3).mean((1, 3))
-        peq = gaussian_filter(peq, (VEU_GRAUS * PX_GRAU / p,) * 2 + (0,), mode="nearest")
-        img = (1 - v) * img + v * zoom(peq, (p, p, 1), order=1)
+        h, w = img.shape[0] // p * p, img.shape[1] // p * p
+        peq = img[:h, :w].reshape(h // p, p, w // p, p, 3).mean((1, 3))
+        peq = gaussian_filter(peq, (VEU_GRAUS * px_grau / p,) * 2 + (0,), mode="nearest")
+        img = (1 - v) * img + v * cv2.resize(peq, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_LINEAR)
     c = lente.get("contraste", 1.0)
-    img = c * img + (1 - c) * img.mean((0, 1))
-    return img * np.asarray(lente.get("amarelamento", (1, 1, 1)), np.float32)
+    if c != 1:
+        img = c * img + (1 - c) * img.mean((0, 1))
+    return img * np.asarray(lente["amarelamento"], np.float32) if "amarelamento" in lente else img
 
 
 def verificar(cena, imgs, nitida, rua):
@@ -270,15 +272,16 @@ def verificar(cena, imgs, nitida, rua):
         assert brilho("multifocal") > 1.5 * brilho("monofocal"), "a multifocal precisa de halo à noite"
 
 
-def degrade(rgb):
+def degrade(rgb, campo=CAMPO):
     """Escurece as bordas laterais nos últimos FADE graus: a imagem some no preto, sem quina."""
-    lon = np.abs((np.arange(W) + 0.5) / W - 0.5) * CAMPO
-    f = np.clip((CAMPO / 2 - lon) / FADE, 0, 1)
+    w = rgb.shape[1]
+    lon = np.abs((np.arange(w) + 0.5) / w - 0.5) * campo
+    f = np.clip((campo / 2 - lon) / FADE, 0, 1)
     return rgb * (f * f * (3 - 2 * f))[None, :, None]
 
 
-def oito_bits(rgb):
-    return (srgb(rgb) * 255 + 0.5).astype(np.uint8)
+def oito_bits(rgb, aces=True):
+    return (srgb(rgb, aces) * 255 + 0.5).astype(np.uint8)
 
 
 def salvar(rgb, nome):
@@ -288,8 +291,8 @@ def salvar(rgb, nome):
 
 def folha_de_contato(recortes, caminho, w=400, h=300):
     """Uma linha por lente; colunas = cena × região, em 1:1, para comparar nitidez e halos."""
-    colunas = [(cena, regiao) for cena in recortes for regiao in recortes[cena]["nítida"]]
-    linhas = list(recortes["dia"])
+    colunas = [(cena, regiao) for cena in recortes for regiao in next(iter(recortes[cena].values()))]
+    linhas = list(next(iter(recortes.values())))
     folha = Image.new("RGB", (150 + w * len(colunas), 34 + h * len(linhas)), (255, 255, 255))
     d = ImageDraw.Draw(folha)
     fonte = ImageFont.truetype(FONTE, 20)
@@ -305,9 +308,9 @@ def folha_de_contato(recortes, caminho, w=400, h=300):
 if __name__ == "__main__":
     folha = sys.argv[1] if len(sys.argv) > 1 else os.path.join(tempfile.gettempdir(), "folha-de-contato.jpg")
     perto = {"intermediário": (2486, 2235), "perto": (1825, 2160)}  # centros dos recortes em px
-    regioes = {"dia": {"longe": (2700, 1620), **perto}, "noite": {"longe": (2700, 1500), **perto}}
+    regioes = {"noite": {"longe": (2700, 1500), **perto}}
     recortes = {}
-    for cena, noite in (("dia", False), ("noite", True)):
+    for cena, noite in (("noite", True),):
         camadas = construir_cena(noite)
         nitida = compor(camadas)
         # autoverificação da cena: fundo cobrindo tudo, cardápio onde foi posto, luzes intensas à noite
