@@ -9,7 +9,8 @@
 
 ## Decisões
 - **MVP (01/11/2026):** de dia, 10 s de vídeo da X6 gravado pelo Henrique na varanda (livro a ~30 cm, criança e mulher a ~1 m, árvores ao longe), publicação autorizada por ele. À noite, a foto HDR `vignaioli_night` do Poly Haven (CC0) com mesa, cardápio e notebook sintéticos. As gravações do roteiro (café de dia, carro à noite) ficam para depois do MVP (ticket 05).
-- **Vídeo:** só a lente da frente, sem costura, 190° × 180° em 3040 × 2880 (H.264 nível 5.2). A profundidade vem do Depth Anything V2 small, calibrada pelas três distâncias que o Henrique informou. Detalhes na spec, seção "Vídeo".
+- **Vídeo:** só a lente da frente, sem costura, 190° × 180° em 3800 × 3600 (20 px/grau, a resolução da lente), em HEVC. A profundidade vem do Depth Anything V2 small, calibrada pelas distâncias que o Henrique informou; o livro conta como perto (40 cm). Detalhes na spec, seção "Vídeo".
+- **Perto (01/11/2026):** a multifocal e o olho de perto da monovisão (agora −2,50 D) leem o livro 100% nítido. De dia a multifocal é seletiva: onde uma imagem está em foco, só ela conta. À noite segue a óptica física, com halos.
 - **WebXR nativo do Chrome** (Cardboard) no lugar do giroscópio e do estéreo próprios. O antigo ticket 02 (calibração) saiu; a calibração passa a ser o QR code do óculos.
 - **Campo:** 220° × 180° nas fotos e 190° × 180° no vídeo. O app tira o campo da proporção da mídia, e a borda some num degradê.
 - **Óptica.** A tabela da spec foi aprovada como ponto de partida e fica em `tools/lentes.py`. Ordem dos capítulos da spec mantida.
@@ -25,14 +26,13 @@
 - **Não verificado no aparelho:** WebXR no S23 Ultra, QR code do Cardboard no óculos, tela acesa durante a sessão, nitidez real no óculos, reprodução do vídeo de 3040 × 2880 (dois ao mesmo tempo na monovisão), vídeo atualizando dentro da sessão VR.
 
 ## Pendências do Henrique
-1. Abrir o site no Chrome do S23 Ultra, tocar em Iniciar e contar se entra no modo VR do Cardboard.
-2. Comprar um SC-G15E e testar o encaixe.
-3. Avaliação clínica das folhas de contato (noite e vídeo) e, depois, no óculos. O ganho 2,0 também dobra o tamanho do halo.
-4. Gravar a narração por capítulo (opcional no MVP).
+1. Feito em 01/11/2026: o vídeo tocou no S23 Ultra com um óculos Shinecon, mas a resolução pareceu baixa. Conferir se a tela está em WQHD+ e retestar com o vídeo em resolução cheia (HEVC).
+2. Avaliação clínica das folhas de contato (noite e vídeo) e, depois, no óculos. O ganho 2,0 também dobra o tamanho do halo.
+3. Gravar a narração por capítulo (opcional no MVP).
 
 ## Como rodar
 - `python3 tools/bake.py [folha.jpg]` regera as fotos da noite e a folha de contato em ~1 min. Na primeira vez, baixa o HDR para `~/.cache/olharpar-lensvr`. Precisa de numpy, Pillow, scipy e opencv.
-- `python3 tools/video.py <trecho.mp4> 1.0 10 [folha.jpg]` regera os vídeos do dia e a folha de contato deles em ~55 min. Precisa também de onnxruntime; baixa o modelo de profundidade (~100 MB) na primeira vez. O trecho precisa ser copiado do Mac (device_stage_files).
+- `python3 tools/video.py <trecho.mp4> 1.0 10 [folha.jpg]` regera os vídeos do dia e a folha de contato deles em ~1h45. Precisa também de onnxruntime; baixa o modelo de profundidade (~100 MB) na primeira vez. O trecho precisa ser copiado do Mac (device_stage_files).
 - `node --test` testa a montagem da sequência.
 - `THREE_DIR=<three/build> python3 tests/smoke.py <pasta>` roda o teste da página (Playwright + Chromium). Sem acesso ao CDN, use `npm pack three@0.186.1`.
 - Para publicar: `git push origin main`.

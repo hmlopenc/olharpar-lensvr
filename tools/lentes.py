@@ -6,6 +6,8 @@ Depois de editar: python3 tools/bake.py  (regera media/ e a folha de contato).
 Componente = (foco em D, faixa nítida em D, fração da luz). Frações de uma lente somam 1.
 Desfoque efetivo de um objeto = |vergência do objeto − foco| − faixa (nunca negativo).
 Diâmetro do borrão = pupila × desfoque × GANHO.
+Lente "seletiva": de dia, onde uma das imagens está em foco, o cérebro fica só com ela (no vídeo, tools/video.py).
+À noite vale a óptica física, e a luz desviada vira halo.
 """
 
 GANHO = 2.0                             # 1,0 = óptica física; 2,0 compensa a tela do óculos (~20/75)
@@ -21,10 +23,11 @@ LENTES = {
     },
     "monofocal": {"componentes": [(0.0, 0.25, 1.0)]},
     "edof": {"componentes": [(0.75, 0.75, 0.9), (2.0, 0.25, 0.1)]},
-    "multifocal": {"componentes": [(0.0, 0.25, 0.5), (1.5, 0.25, 0.2), (2.5, 0.25, 0.3)]},
+    # 01/11/2026: de dia, perto (livro) e longe 100% nítidos.
+    "multifocal": {"componentes": [(0.0, 0.25, 0.5), (1.5, 0.25, 0.2), (2.5, 0.25, 0.3)], "seletiva": True},
     # Monofocal comum num olho com astigmatismo: equivalente esférico no foco, meridianos a ±cilindro/2.
     # Eixo em graus na imagem (0 = horizontal, 90 = vertical); o meridiano do eixo fica em foco − cilindro/2.
     "astig": {"componentes": [(0.0, 0.25, 1.0)], "cilindro": 1.50, "eixo": 90},
-    # Olho de perto da monovisão (OE, −1,50 D). O OD usa a monofocal.
-    "perto": {"componentes": [(1.5, 0.25, 1.0)]},
+    # Olho de perto da monovisão (OE, −2,50 D: lê o livro nítido, decisão de 01/11/2026). O OD usa a monofocal.
+    "perto": {"componentes": [(2.5, 0.25, 1.0)]},
 }

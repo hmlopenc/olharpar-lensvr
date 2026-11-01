@@ -61,10 +61,10 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 | Catarata (antes) | 0 · 0,25 · 1,0 | desfoque basal 0,75 D, véu 30%, contraste 70%, amarelamento |
 | Monofocal | 0 · 0,25 · 1,0 | — |
 | EDOF | 0,75 · 0,75 · 0,9 + 2,0 · 0,25 · 0,1 | — |
-| Multifocal (trifocal) | 0 · 0,25 · 0,5 + 1,5 · 0,25 · 0,2 + 2,5 · 0,25 · 0,3 | — |
+| Multifocal (trifocal) | 0 · 0,25 · 0,5 + 1,5 · 0,25 · 0,2 + 2,5 · 0,25 · 0,3 | de dia, a imagem em foco prevalece: longe e perto 100% nítidos (01/11/2026); à noite, halos |
 | Tórica: sem correção | 0 · 0,25 · 1,0 | astigmatismo residual 1,50 D a 90° |
 | Tórica: corrigida | igual à monofocal | — |
-| Monovisão | OD: 0 · 0,25 · 1,0 / OE: 1,5 · 0,25 · 1,0 (−1,50 D) | imagem diferente por olho |
+| Monovisão | OD: 0 · 0,25 · 1,0 / OE: 2,5 · 0,25 · 1,0 (−2,50 D; era −1,50 D até 01/11/2026) | imagem diferente por olho; o OE lê o perto nítido |
 
 - Fotos em 4096 × 3352 (220° × 180°, ≈18,6 px/grau, acima dos ~16 px/grau da tela no óculos): `media/noite-{lente}.jpg`. Vídeo do dia: `media/dia-{lente}.mp4`. Lentes: catarata, monofocal, edof, multifocal, astig, perto. A tórica corrigida e o OD da monovisão reusam a monofocal.
 
@@ -83,9 +83,9 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 
 **Vídeo (`tools/video.py`)**
 - Origem: o `.insv` da X6 traz as duas lentes em fluxos separados (3840 × 3840, HEVC 10 bits, 29,97 fps). Usa-se só a lente da frente (fluxo 0), sem costura: ela cobre ~194° no quadro. Projeção equidistante calibrada pela sobreposição com a lente de trás: 19,75 px/grau, centro (1919; 1920).
-- Saída 190° × 180° em 3040 × 2880 (16 px/grau), H.264 nível 5.2 (o maior quadro desse nível a 30 fps). Falta confirmar a reprodução no S23 Ultra.
-- Profundidade: Depth Anything V2 small (ONNX, CPU) quadro a quadro. A profundidade relativa vira vergência pelas três referências medidas na gravação: árvores 0,03 D, criança e mulher 1,0 D, livro 3,33 D. Depois, mediana de 5 quadros no tempo.
-- Óptica: a mesma do `bake.py`, em 5 faixas de vergência alinhadas às referências, somadas com normalização (o que o objeto da frente escondia é preenchido). Cada componente da lente é borrado na sua escala: borrões grandes em 1/2 ou 1/4 da resolução, a parte nítida da EDOF e da multifocal na resolução cheia. A memória do container (~6 GB) manda: um processo só, com as 6 lentes gravadas primeiro num rascunho quase sem perda e comprimidas depois, uma por vez. Leva ~55 min por 10 s.
+- Saída 190° × 180° em 3800 × 3600 (20 px/grau, a resolução da própria lente), em HEVC: passa do teto do H.264 (~9 MP por quadro), e o S23 Ultra decodifica HEVC no hardware. A versão anterior, em H.264 a 3040 × 2880, tocou nele.
+- Profundidade: Depth Anything V2 small (ONNX, CPU) quadro a quadro. A profundidade relativa vira vergência pelas três referências medidas na gravação: árvores 0,03 D, criança e mulher 1,0 D. O livro, a ~30 cm, conta como o perto do app (2,5 D), e nada fica mais perto que ele (01/11/2026: não importa 30 ou 40 cm). Depois, mediana de 5 quadros no tempo.
+- Óptica: a mesma do `bake.py`, em 4 faixas de vergência (0; 1,0; 1,75; 2,5 D), somadas com normalização (o que o objeto da frente escondia é preenchido). Cada componente da lente é borrado na sua escala: borrões grandes em 1/2 ou 1/4 da resolução, a parte nítida da EDOF e da multifocal na resolução cheia. A memória do container (~6 GB) manda: duas passadas de 3 lentes, cada lente gravada primeiro num rascunho quase sem perda e comprimida em HEVC depois, uma por vez. Leva ~1h45 por 10 s.
 - O trecho de origem fica no Mac (`VR simulator/VR IOL Simulator/video teste/trecho_37-49s.mp4`, cópia sem recodificar de 37 a 49 s). Para regerar: `python3 tools/video.py <trecho> 1.0 10`.
 - Produto final: vídeos mais longos passam do limite do GitHub Pages (~1 GB): hospedar à parte e baixar no celular antes da consulta.
 
