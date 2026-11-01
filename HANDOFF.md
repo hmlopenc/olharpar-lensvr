@@ -18,12 +18,13 @@
 - **Óculos do MVP:** Shinecon SC-G15E (testar o encaixe do S23 Ultra sem capa). Opção premium futura: Meta Quest 3, que abre o mesmo link.
 
 ## Estado
-- Tickets 01 (código), 03 e 04 prontos e publicados; de dia, vídeo da X6 desde 01/11/2026. Evidência:
-  - verificações embutidas do `bake.py` passando (noite);
-  - folha de contato do vídeo (quadro do meio) revisada: monofocal nítida longe, EDOF nítida longe e no intermediário, multifocal nítida com véu;
+- Tickets 01 (código), 03 e 04 prontos e publicados; de dia, vídeo da X6 desde 01/11/2026, em resolução cheia (HEVC 3800 × 3600) e com o perto nítido desde a tarde do mesmo dia. Evidência:
+  - verificações embutidas do `bake.py` passando (noite) e asserção do `video.py`: livro sem borrão na multifocal e no OE da monovisão;
+  - folha de contato do vídeo (quadro do meio) revisada: monofocal nítida longe; EDOF nítida longe e no intermediário; multifocal nítida longe e no livro, macia na criança e na mulher (o foco intermediário da tabela é 67 cm); OE da monovisão nítido no livro;
+  - os 6 vídeos: HEVC (`hvc1`), 3800 × 3600, 300 quadros, 10 s, 2–18 MB. No quadro do meio, o HEVC guarda 95% do detalhe fino da imagem antes da compressão; o H.264 de 16 px/grau anterior guardava 72%;
   - `node --test` 4/4;
   - teste de fumaça headless: vídeo do dia tocando, vista da frente batendo com a projeção esperada (e não com o espelho), OE da monovisão com a imagem de perto, volta à tela inicial, falha de carregamento escrita na tela.
-- **Não verificado no aparelho:** WebXR no S23 Ultra, QR code do Cardboard no óculos, tela acesa durante a sessão, nitidez real no óculos, reprodução do vídeo de 3040 × 2880 (dois ao mesmo tempo na monovisão), vídeo atualizando dentro da sessão VR.
+- **Não verificado no aparelho:** WebXR no S23 Ultra, QR code do Cardboard no óculos, tela acesa durante a sessão, nitidez real no óculos, reprodução do HEVC de 3800 × 3600 no Chrome do S23 (dois ao mesmo tempo na monovisão), vídeo atualizando dentro da sessão VR, cintilação da tela de arame ao mexer a cabeça (o vídeo tem mais pixels por grau que a tela).
 
 ## Pendências do Henrique
 1. Feito em 01/11/2026: o vídeo tocou no S23 Ultra com um óculos Shinecon, mas a resolução pareceu baixa. Conferir se a tela está em WQHD+ e retestar com o vídeo em resolução cheia (HEVC).
@@ -32,13 +33,14 @@
 
 ## Como rodar
 - `python3 tools/bake.py [folha.jpg]` regera as fotos da noite e a folha de contato em ~1 min. Na primeira vez, baixa o HDR para `~/.cache/olharpar-lensvr`. Precisa de numpy, Pillow, scipy e opencv.
-- `python3 tools/video.py <trecho.mp4> 1.0 10 [folha.jpg]` regera os vídeos do dia e a folha de contato deles em ~1h45. Precisa também de onnxruntime; baixa o modelo de profundidade (~100 MB) na primeira vez. O trecho precisa ser copiado do Mac (device_stage_files).
+- `python3 tools/video.py <trecho.mp4> 1.0 10 [folha.jpg]` regera os vídeos do dia e a folha de contato deles em ~1h30. Precisa também de onnxruntime; baixa o modelo de profundidade (~100 MB) na primeira vez. O trecho precisa ser copiado do Mac (device_stage_files).
 - `node --test` testa a montagem da sequência.
 - `THREE_DIR=<three/build> python3 tests/smoke.py <pasta>` roda o teste da página (Playwright + Chromium). Sem acesso ao CDN, use `npm pack three@0.186.1`.
 - Para publicar: `git push origin main`.
 
 ## Próximos passos
 - Ajustar o que o teste no aparelho mostrar: escala do framebuffer, legenda, ganho, campo.
+- Se o Chrome do S23 não tocar o HEVC (a tela inicial mostra "não carregou"), converter os 6 vídeos para H.264 de 3040 × 2880 com ffmpeg (minutos, sem renderizar de novo).
 - Narração: cada capítulo toca o seu áudio e dura o tempo dele (nota no ticket 04).
 - Ticket 05 quando existirem as gravações do roteiro.
 

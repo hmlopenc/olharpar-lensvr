@@ -12,7 +12,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SAIDA = sys.argv[1] if len(sys.argv) > 1 else "."
 THREE_DIR = os.environ.get("THREE_DIR")
 FOTO = {c: os.path.join(SAIDA, f"smoke-{c}.png") for c in ("video1", "video2", "monofocal", "monovisao")}
-# No SwiftShader cada quadro de um vídeo de 3040 × 2880 leva segundos: o teste usa cópias de 760 × 720 (mesmo campo).
+# No SwiftShader cada quadro do vídeo em resolução cheia leva segundos: o teste usa cópias de 760 × 720 (mesmo campo).
 for lente in ("catarata", "monofocal", "perto"):
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-t", "3", "-i", os.path.join(RAIZ, "media", f"dia-{lente}.mp4"),
                     "-vf", "scale=760:720", "-c:v", "libx264", "-preset", "veryfast", os.path.join(SAIDA, f"dia-{lente}.mp4")],
