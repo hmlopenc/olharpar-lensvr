@@ -12,6 +12,11 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SAIDA = sys.argv[1] if len(sys.argv) > 1 else "."
 THREE_DIR = os.environ.get("THREE_DIR")
 FOTO = {c: os.path.join(SAIDA, f"smoke-{c}.png") for c in ("video1", "video2", "monofocal", "monovisao")}
+# No SwiftShader cada quadro de um vídeo de 3040 × 2880 leva segundos: o teste usa cópias de 760 × 720 (mesmo campo).
+for lente in ("catarata", "monofocal", "perto"):
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-t", "3", "-i", os.path.join(RAIZ, "media", f"dia-{lente}.mp4"),
+                    "-vf", "scale=760:720", "-c:v", "libx264", "-preset", "veryfast", os.path.join(SAIDA, f"dia-{lente}.mp4")],
+                   check=True)
 
 servidor = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=RAIZ,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -26,20 +31,21 @@ try:
         if THREE_DIR:
             pag.route("https://cdn.jsdelivr.net/npm/three@*/build/*", lambda r: r.fulfill(
                 path=os.path.join(THREE_DIR, r.request.url.rsplit("/", 1)[1]), content_type="text/javascript"))
-        pag.goto("http://localhost:8765/?s=30")  # no SwiftShader, cada quadro com vídeo de 3040 × 2880 leva segundos
+        pag.route("**/media/dia-*.mp4", lambda r: r.fulfill(path=os.path.join(SAIDA, r.request.url.rsplit("/", 1)[1])))
+        pag.goto("http://localhost:8765/?s=20")  # no SwiftShader as fotos de tela com vídeo levam segundos
         for lente in ("edof", "multifocal", "torica"):  # sobram catarata, monofocal e monovisão em cada cena
             pag.uncheck(f"#lentes input[value={lente}]")
         pag.click("#iniciar")
         # De dia é vídeo: duas fotos do mesmo capítulo têm de diferir (o vídeo está tocando).
         cap = "De dia · Lente monofocal"
-        pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=120000)
+        pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=90000)
         pag.wait_for_timeout(3300)
         pag.screenshot(path=FOTO["video1"])
         pag.wait_for_timeout(1500)
         pag.screenshot(path=FOTO["video2"])
         assert pag.get_attribute("body", "data-capitulo") == cap, "as fotos do vídeo saíram atrasadas"
         for cap, foto in (("À noite · Lente monofocal", "monofocal"), ("À noite · Monovisão", "monovisao")):
-            pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=120000)
+            pag.wait_for_selector(f'body[data-capitulo="{cap}"]', timeout=90000)
             pag.wait_for_timeout(3300)  # a legenda some depois de 3 s
             pag.screenshot(path=FOTO[foto])  # no SwiftShader cada quadro demora: confere se ainda é o mesmo capítulo
             assert pag.get_attribute("body", "data-capitulo") == cap, f"a foto de {cap} saiu atrasada"

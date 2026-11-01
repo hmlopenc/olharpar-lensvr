@@ -17,16 +17,17 @@
 - **Óculos do MVP:** Shinecon SC-G15E (testar o encaixe do S23 Ultra sem capa). Opção premium futura: Meta Quest 3, que abre o mesmo link.
 
 ## Estado
-- Tickets 01 (código), 03 e 04 prontos e publicados. Evidência:
-  - verificações embutidas do `bake.py` passando;
+- Tickets 01 (código), 03 e 04 prontos e publicados; de dia, vídeo da X6 desde 01/11/2026. Evidência:
+  - verificações embutidas do `bake.py` passando (noite);
+  - folha de contato do vídeo (quadro do meio) revisada: monofocal nítida longe, EDOF nítida longe e no intermediário, multifocal nítida com véu;
   - `node --test` 4/4;
-  - teste de fumaça headless: vista da frente com correlação 0,999 com a projeção esperada (0,55 contra o espelho), OE da monovisão com a imagem de perto, volta à tela inicial.
-- **Não verificado no aparelho:** WebXR no S23 Ultra, QR code do Cardboard no óculos, tela acesa durante a sessão, nitidez real no óculos.
+  - teste de fumaça headless: vídeo do dia tocando, vista da frente batendo com a projeção esperada (e não com o espelho), OE da monovisão com a imagem de perto, volta à tela inicial, falha de carregamento escrita na tela.
+- **Não verificado no aparelho:** WebXR no S23 Ultra, QR code do Cardboard no óculos, tela acesa durante a sessão, nitidez real no óculos, reprodução do vídeo de 3040 × 2880 (dois ao mesmo tempo na monovisão), vídeo atualizando dentro da sessão VR.
 
 ## Pendências do Henrique
 1. Abrir o site no Chrome do S23 Ultra, tocar em Iniciar e contar se entra no modo VR do Cardboard.
 2. Comprar um SC-G15E e testar o encaixe.
-3. Avaliação clínica da folha de contato e, depois, no óculos. O ganho 2,0 também dobra o tamanho do halo.
+3. Avaliação clínica das folhas de contato (noite e vídeo) e, depois, no óculos. O ganho 2,0 também dobra o tamanho do halo.
 4. Gravar a narração por capítulo (opcional no MVP).
 
 ## Como rodar
