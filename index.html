@@ -34,6 +34,7 @@
   </fieldset>
   <button id="iniciar">Iniciar</button>
   <p id="erro" role="alert" hidden></p>
+  <p class="aviso" id="controle" hidden>Controle conectado. No óculos, qualquer botão abre o menu.</p>
   <p class="aviso">Simulação ilustrativa. Os resultados variam de pessoa para pessoa.</p>
 </main>
 <script type="module">
@@ -139,6 +140,43 @@ function legenda(cima, baixo) {
   placa.visible = Boolean(cima || baixo);
 }
 
+// Controle Bluetooth no modo GAME (o SC-B03 do óculos), porque com o celular no óculos não há toque.
+// Qualquer botão abre o menu ou escolhe o item; o joystick, ou o direcional (botões 12 a 15 no layout "standard"), troca de item.
+// ponytail: o menu é a própria legenda, um item por vez; lista inteira em 3D se ficar difícil de usar.
+const caixas = [...document.querySelectorAll('#lentes input')];
+const marcadas = () => caixas.filter(c => c.checked).map(c => c.value);
+const rotulo = i => i < caixas.length ? `${caixas[i].parentElement.textContent.trim()}: ${caixas[i].checked ? 'sim' : 'não'}` : 'Iniciar';
+let menu = -1;  // item mostrado; -1 = menu fechado
+let antes = { botao: true, dir: 0 };  // começa "apertado": um botão que já estava seguro não conta
+
+function mostrarMenu(i = caixas.length) {  // começa em Iniciar
+  rodada++;  // a sequência em andamento para
+  menu = i;
+  legenda('Joystick troca · botão escolhe', rotulo(i));
+  document.body.dataset.menu = rotulo(i);  // ponto de observação do teste de fumaça
+  delete document.body.dataset.capitulo;
+}
+
+function controle() {  // chamado a cada quadro
+  const g = [...navigator.getGamepads()].find(Boolean);
+  if (!g) return;
+  const [x = 0, y = 0] = g.axes, ap = i => g.buttons[i]?.pressed;
+  const eixo = Math.abs(x) > Math.abs(y) ? x : y;
+  const dir = ap(13) || ap(15) || eixo > 0.5 ? 1 : ap(12) || ap(14) || eixo < -0.5 ? -1 : 0;
+  const botao = g.buttons.some((b, i) => b.pressed && (i < 12 || i > 15));
+  if (botao && !antes.botao) {
+    if (menu < 0) mostrarMenu();
+    else if (menu < caixas.length) { caixas[menu].checked = !caixas[menu].checked; mostrarMenu(menu); }
+    else { menu = -1; delete document.body.dataset.menu; legenda(); experiencia(montar(marcadas()), ++rodada, 0).catch(falhar); }
+  } else if (dir && dir !== antes.dir && menu >= 0) mostrarMenu((menu + dir + caixas.length + 1) % (caixas.length + 1));
+  antes = { botao, dir };
+}
+
+// O Chrome só mostra o controle à página depois do primeiro botão apertado: o aviso confirma, antes do óculos, que ele responde.
+const avisoControle = document.querySelector('#controle');
+addEventListener('gamepadconnected', () => { avisoControle.hidden = false; });
+addEventListener('gamepaddisconnected', () => { avisoControle.hidden = ![...navigator.getGamepads()].some(Boolean); });
+
 const frente = new THREE.Vector3();
 function recentralizar() {  // gira o mundo para que o centro da imagem (+x) fique na direção atual da cabeça
   camera.getWorldDirection(frente);
@@ -164,14 +202,16 @@ function parar() {
   canvas.hidden = true;
   inicio.hidden = false;
   legenda();
+  menu = -1;
+  delete document.body.dataset.menu;
   delete document.body.dataset.capitulo;
   trava?.release();
 }
 
-async function experiencia(caps, minha) {
+async function experiencia(caps, minha, contagem = 5) {  // contagem 0: recomeço pelo menu, com o celular já no óculos
   const ativa = () => minha === rodada;
   for (const c of caps.slice(0, 1)) { pegar(c.od); pegar(c.oe); }  // carrega durante a contagem
-  for (let n = 5; n > 0 && ativa(); n--) { legenda('Encaixe o celular no óculos', String(n)); await espera(1000); }
+  for (let n = contagem; n > 0 && ativa(); n--) { legenda('Encaixe o celular no óculos', String(n)); await espera(1000); }
   for (let i = 0; i < caps.length && ativa(); i++) {
     const c = caps[i], prox = caps[i + 1];
     const [tOD, tOE] = await Promise.all([pegar(c.od), pegar(c.oe)]);
@@ -181,6 +221,7 @@ async function experiencia(caps, minha) {
     const videos = [...new Set([tOD, tOE])].filter(t => t.isVideoTexture).map(t => t.image);
     for (const v of videos) v.currentTime = 0;
     await Promise.all(videos.map(v => v.play().catch(e => { if (ativa()) throw e; })));  // os dois olhos juntos (monovisão)
+    if (!ativa()) return;  // o menu pode ter aberto enquanto o vídeo começava
     if (i === 0) recentralizar();
     manter([c.od, c.oe, prox?.od, prox?.oe]);
     if (prox) { pegar(prox.od); pegar(prox.oe); }
@@ -192,17 +233,24 @@ async function experiencia(caps, minha) {
     await espera(ms - Math.min(3000, ms / 2));
   }
   if (!ativa()) return;
+  if ([...navigator.getGamepads()].some(Boolean)) return mostrarMenu();  // com controle, fica no óculos e volta ao menu
   if (renderer.xr.isPresenting) renderer.xr.getSession().end();  // o fim da sessão chama parar()
   else parar();
 }
 
 // No celular não há console: o motivo de uma falha aparece na tela inicial para a secretária repassar.
 const erro = document.querySelector('#erro');
+async function falhar(e) {
+  if (renderer.xr.isPresenting) await renderer.xr.getSession().end().catch(() => {});
+  parar();
+  erro.textContent = `Não deu para continuar: ${e?.message || e?.type || e}`;
+  erro.hidden = false;
+}
 
 document.querySelector('#iniciar').onclick = async () => {
   erro.hidden = true;
   try {
-    const caps = montar([...document.querySelectorAll('#lentes input:checked')].map(i => i.value));
+    const caps = montar(marcadas());
     if (temXR) {
       const sessao = await navigator.xr.requestSession('immersive-vr');
       renderer.xr.setFramebufferScaleFactor(XRWebGLLayer.getNativeFramebufferScaleFactor(sessao));  // nitidez: resolução nativa da tela
@@ -213,13 +261,10 @@ document.querySelector('#iniciar').onclick = async () => {
     inicio.hidden = true;
     canvas.hidden = false;
     ajustar();
-    renderer.setAnimationLoop(() => renderer.render(cena, camera));
+    renderer.setAnimationLoop(() => { controle(); renderer.render(cena, camera); });
     await experiencia(caps, ++rodada);
   } catch (e) {
-    if (renderer.xr.isPresenting) await renderer.xr.getSession().end().catch(() => {});
-    parar();
-    erro.textContent = `Não deu para continuar: ${e?.message || e?.type || e}`;
-    erro.hidden = false;
+    await falhar(e);
   }
 };
 

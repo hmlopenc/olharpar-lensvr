@@ -29,6 +29,7 @@ Um simulador em óculos VR de encaixar celular. O paciente olha ao redor de uma 
 13. Como médico, quero que o app volte à tela inicial no fim, pronto para o próximo paciente.
 14. Como médico, quero publicar atualizações sem instalar nada nos aparelhos.
 15. Como paciente, quero ouvir o Dr. Henrique explicando cada capítulo.
+16. Como médico, quero escolher as lentes com o controle do óculos, sem tirar o celular, para repetir ou comparar.
 
 ## Decisões de implementação
 
@@ -36,7 +37,7 @@ Um simulador em óculos VR de encaixar celular. O paciente olha ao redor de uma 
 - Página web estática, sem React e sem etapa de build. three.js carregado por CDN. Publicada no GitHub Pages, repositório `olharpar-lensvr`.
 - WebXR (`immersive-vr`) pelo `renderer.xr` do three.js. No Chrome Android o WebXR usa o Cardboard SDK, ativado por padrão, que cuida de rastrear a cabeça, do estéreo, da tela cheia e da correção da distorção das lentes pelo perfil do óculos. O perfil é um QR code escaneado uma vez por aparelho; se o óculos não trouxer, gera-se um no gerador de perfis do Google. Sem calibração própria no app.
 - Aparelho-alvo: Galaxy S23 Ultra no Chrome, com a tela em WQHD+ (de fábrica vem em FHD+). O Fold 7 fica como aparelho de teste secundário. O mesmo link roda num Meta Quest.
-- Óculos do MVP: Shinecon SC-G15E (ajuste de IPD e de foco, almofada de PU). Não há óculos de celular premium à venda no Brasil (pesquisa de 23/10/2026). Antes de comprar mais, testar o encaixe do S23 Ultra sem capa (163,4 mm). Os fones do óculos pedem adaptador USB-C.
+- Óculos em uso: Shinecon SC-G04E V2, com o controle Bluetooth SC-B03. A pesquisa de 23/10/2026 indicava o SC-G15E; não há óculos de celular premium à venda no Brasil. Antes de comprar mais, testar o encaixe do S23 Ultra sem capa (163,4 mm).
 - Aviso "Simulação ilustrativa. Os resultados variam de pessoa para pessoa." na tela inicial.
 
 **Visualização**
@@ -78,8 +79,9 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 - Cena por cena: primeiro o dia com todas as lentes selecionadas, depois a noite com as mesmas lentes. A catarata abre cada cena.
 - Ordem fixa (mantida em 23/10/2026): catarata, monofocal, EDOF, multifocal, tórica (dois tempos: sem correção e corrigida), monovisão.
 - 15 s por capítulo de foto; o de vídeo dura o vídeo (10 s). O parâmetro `?s=` na URL encurta todos para testar. Quando houver narração, o capítulo dura o áudio. Nome do capítulo nos primeiros segundos.
-- Tela inicial: catarata sempre incluída, lentes todas marcadas por padrão, sem escolha de cena. No fim, volta à tela inicial.
-- Sem tablet e sem controle remoto.
+- Tela inicial: catarata sempre incluída, lentes todas marcadas por padrão, sem escolha de cena. Sem controle, no fim volta à tela inicial.
+- Controle do óculos (SC-B03 no modo GAME, lido pela Gamepad API do navegador): dentro do óculos, qualquer botão abre o menu na própria legenda, um item por vez (cada lente com sim/não, e Iniciar). O joystick troca de item e o botão escolhe. Com controle, o fim da sequência volta ao menu sem sair do VR. A entrada no VR continua sendo um toque em Iniciar, porque o Chrome exige um toque. O SC-B03 não tem modo mouse.
+- Sem tablet.
 
 **Vídeo (`tools/video.py`)**
 - Origem: o `.insv` da X6 traz as duas lentes em fluxos separados (3840 × 3840, HEVC 10 bits, 29,97 fps). Usa-se só a lente da frente (fluxo 0), sem costura: ela cobre ~194° no quadro. Projeção equidistante calibrada pela sobreposição com a lente de trás: 19,75 px/grau, centro (1919; 1920).
@@ -94,8 +96,8 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 - Um bom teste verifica comportamento externo, não detalhes internos.
 - Costura 1: montagem da sequência a partir da seleção de lentes (lógica pura), testada com o test runner nativo do Node.
 - Costura 2: processamento óptico, com verificações embutidas no script (sem borrão onde a lente foca, borrão crescente com o desfoque, frações somando 1, dimensões das imagens) e uma folha de contato com todas as variantes para revisão visual.
-- Costura 3: a página num navegador headless, sem WebXR (carrega sem erros, avança os capítulos, o vídeo do dia toca, a vista da frente bate com a projeção esperada da imagem e não está espelhada). A aceitação final é o teste do médico com o óculos.
+- Costura 3: a página num navegador headless, sem WebXR (carrega sem erros, avança os capítulos, o vídeo do dia toca, a vista da frente bate com a projeção esperada da imagem e não está espelhada, o menu responde a um controle falso). A aceitação final é o teste do médico com o óculos.
 
 ## Fora do escopo
 
-Vídeos longos e sua hospedagem fora do GitHub Pages; transferência NAS → celular; personalização por paciente; controle por tablet ou remoto; iPhone (o Safari não tem WebXR).
+Vídeos longos e sua hospedagem fora do GitHub Pages; transferência NAS → celular; personalização por paciente; controle por tablet; iPhone (o Safari não tem WebXR).

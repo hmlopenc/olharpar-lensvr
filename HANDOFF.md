@@ -1,4 +1,4 @@
-# Handoff — Simulador VR de lentes (OlharPar) · checkpoint de 01/11/2026
+# Handoff — Simulador VR de lentes (OlharPar) · checkpoint de 04/11/2026
 
 ## Onde está
 - Código: github.com/hmlopenc/olharpar-lensvr, branch `main`. O app do Claude está instalado no repositório, então dá para fazer push daqui.
@@ -15,7 +15,8 @@
 - **Campo:** 220° × 180° nas fotos e 190° × 180° no vídeo. O app tira o campo da proporção da mídia, e a borda some num degradê.
 - **Óptica.** A tabela da spec foi aprovada como ponto de partida e fica em `tools/lentes.py`. Ordem dos capítulos da spec mantida.
 - **Astigmatismo** com o equivalente esférico no foco (+0,75 −1,50 × 90°). **Curva de tom** ACES nas fotos HDR; o vídeo, que já é SDR, sai sem curva.
-- **Óculos do MVP:** Shinecon SC-G15E (testar o encaixe do S23 Ultra sem capa). Opção premium futura: Meta Quest 3, que abre o mesmo link.
+- **Óculos:** o do Henrique é o Shinecon SC-G04E V2, com o controle Bluetooth SC-B03. Opção premium futura: Meta Quest 3, que abre o mesmo link.
+- **Controle (04/11/2026):** o SC-B03 no modo GAME (ele não tem modo mouse). Dentro do óculos, qualquer botão abre o menu na própria legenda, um item por vez; com controle, o fim da sequência volta ao menu sem sair do VR. Entrar no VR continua pedindo um toque em Iniciar.
 
 ## Estado
 - Tickets 01 (código), 03 e 04 prontos e publicados; de dia, vídeo da X6 desde 01/11/2026, em resolução cheia (HEVC 3800 × 3600) e com o perto nítido desde a tarde do mesmo dia. Evidência:
@@ -23,13 +24,14 @@
   - folha de contato do vídeo (quadro do meio) revisada: monofocal nítida longe; EDOF nítida longe e no intermediário; multifocal nítida longe e no livro, macia na criança e na mulher (o foco intermediário da tabela é 67 cm); OE da monovisão nítido no livro;
   - os 6 vídeos: HEVC (`hvc1`), 3800 × 3600, 300 quadros, 10 s, 2–18 MB. No quadro do meio, o HEVC guarda 95% do detalhe fino da imagem antes da compressão; o H.264 de 16 px/grau anterior guardava 72%;
   - `node --test` 4/4;
-  - teste de fumaça headless: vídeo do dia tocando, vista da frente batendo com a projeção esperada (e não com o espelho), OE da monovisão com a imagem de perto, volta à tela inicial, falha de carregamento escrita na tela.
-- **Não verificado no aparelho:** WebXR no S23 Ultra, QR code do Cardboard no óculos, tela acesa durante a sessão, nitidez real no óculos, reprodução do HEVC de 3800 × 3600 no Chrome do S23 (dois ao mesmo tempo na monovisão), vídeo atualizando dentro da sessão VR, cintilação da tela de arame ao mexer a cabeça (o vídeo tem mais pixels por grau que a tela).
+  - teste de fumaça headless: vídeo do dia tocando, vista da frente batendo com a projeção esperada (e não com o espelho), OE da monovisão com a imagem de perto, volta à tela inicial, falha de carregamento escrita na tela, e o menu respondendo a um controle falso (abre, troca de item, marca a lente, recomeça e volta no fim).
+- **Não verificado no aparelho:** o Chrome do S23 repassar os botões do SC-B03 à página durante a sessão VR, WebXR no S23 Ultra, QR code do Cardboard no óculos, tela acesa durante a sessão, nitidez real no óculos, reprodução do HEVC de 3800 × 3600 no Chrome do S23 (dois ao mesmo tempo na monovisão), vídeo atualizando dentro da sessão VR, cintilação da tela de arame ao mexer a cabeça (o vídeo tem mais pixels por grau que a tela).
 
 ## Pendências do Henrique
 1. Feito em 01/11/2026: o vídeo tocou no S23 Ultra com um óculos Shinecon, mas a resolução pareceu baixa. Conferir se a tela está em WQHD+ e retestar com o vídeo em resolução cheia (HEVC).
 2. Avaliação clínica das folhas de contato (noite e vídeo) e, depois, no óculos. O ganho 2,0 também dobra o tamanho do halo.
 3. Gravar a narração por capítulo (opcional no MVP).
+4. Testar o controle SC-B03: parear no modo GAME, abrir o site e apertar um botão (aparece "Controle conectado"), tocar em Iniciar e, no óculos, apertar um botão para abrir o menu.
 
 ## Como rodar
 - `python3 tools/bake.py [folha.jpg]` regera as fotos da noite e a folha de contato em ~1 min. Na primeira vez, baixa o HDR para `~/.cache/olharpar-lensvr`. Precisa de numpy, Pillow, scipy e opencv.

@@ -22,16 +22,24 @@ servidor = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=R
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
 erros = []
+
+
+def pagina(nav, w, h, vigiar=True):
+    p = nav.new_page(viewport={"width": w, "height": h})
+    if vigiar:
+        p.on("console", lambda m: m.type == "error" and erros.append(m.text))
+        p.on("pageerror", lambda e: erros.append(str(e)))
+    if THREE_DIR:
+        p.route("https://cdn.jsdelivr.net/npm/three@*/build/*", lambda r: r.fulfill(
+            path=os.path.join(THREE_DIR, r.request.url.rsplit("/", 1)[1]), content_type="text/javascript"))
+    p.route("**/media/dia-*.mp4", lambda r: r.fulfill(path=os.path.join(SAIDA, r.request.url.rsplit("/", 1)[1])))
+    return p
+
+
 try:
     with sync_playwright() as p:
         nav = p.chromium.launch(args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"])
-        pag = nav.new_page(viewport={"width": 1544, "height": 720})
-        pag.on("console", lambda m: m.type == "error" and erros.append(m.text))
-        pag.on("pageerror", lambda e: erros.append(str(e)))
-        if THREE_DIR:
-            pag.route("https://cdn.jsdelivr.net/npm/three@*/build/*", lambda r: r.fulfill(
-                path=os.path.join(THREE_DIR, r.request.url.rsplit("/", 1)[1]), content_type="text/javascript"))
-        pag.route("**/media/dia-*.mp4", lambda r: r.fulfill(path=os.path.join(SAIDA, r.request.url.rsplit("/", 1)[1])))
+        pag = pagina(nav, 1544, 720)
         pag.goto("http://localhost:8765/?s=20")  # no SwiftShader as fotos de tela com vídeo levam segundos
         for lente in ("edof", "multifocal", "torica"):  # sobram catarata, monofocal e monovisão em cada cena
             pag.uncheck(f"#lentes input[value={lente}]")
@@ -49,12 +57,31 @@ try:
             pag.wait_for_timeout(3300)  # a legenda some depois de 3 s
             pag.screenshot(path=FOTO[foto])  # no SwiftShader cada quadro demora: confere se ainda é o mesmo capítulo
             assert pag.get_attribute("body", "data-capitulo") == cap, f"a foto de {cap} saiu atrasada"
-        pag.wait_for_selector("#inicio:not([hidden])", timeout=60000)  # no fim volta à tela inicial
+        pag.wait_for_selector("#inicio:not([hidden])", timeout=60000)  # sem controle, no fim volta à tela inicial
+        # Controle no modo GAME (falso, no lugar do Bluetooth): qualquer botão abre o menu, o joystick troca de item,
+        # o botão marca a lente ou recomeça, e no fim o menu volta em vez de sair.
+        ctrl = pagina(nav, 800, 600)
+        ctrl.add_init_script("""const b = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), e = [0, 0];
+            navigator.getGamepads = () => [{ id: 'teste', mapping: 'standard', connected: true, buttons: b, axes: e }];
+            window.aperta = i => { b[i].pressed = true; setTimeout(() => { b[i].pressed = false; }, 500); };
+            window.empurra = v => { e[1] = v; setTimeout(() => { e[1] = 0; }, 500); };""")
+        ctrl.goto("http://localhost:8765/?s=2")
+        for lente in ("edof", "multifocal", "torica", "monovisao"):
+            ctrl.uncheck(f"#lentes input[value={lente}]")
+        ctrl.click("#iniciar")
+        ctrl.wait_for_selector("body[data-capitulo]", timeout=90000)
+        for acao, item in (("aperta(0)", "Iniciar"), ("empurra(-1)", "Monovisão: não"),
+                           ("aperta(1)", "Monovisão: sim"), ("empurra(1)", "Iniciar")):
+            ctrl.evaluate(acao)
+            ctrl.wait_for_selector(f'body[data-menu="{item}"]:not([data-capitulo])', timeout=30000)
+            ctrl.wait_for_timeout(1000)  # o botão solta antes da próxima ação
+        assert ctrl.is_checked("#lentes input[value=monovisao]"), "o menu não marcou a lente"
+        ctrl.evaluate("aperta(2)")
+        ctrl.wait_for_selector('body[data-capitulo="À noite · Monovisão"]', timeout=90000)  # recomeçou com a lente nova
+        ctrl.wait_for_selector('body[data-menu="Iniciar"]', timeout=90000)
+        assert ctrl.is_hidden("#inicio"), "com controle, o fim devia voltar ao menu, não à tela inicial"
         # Falha visível: sem as imagens, volta à tela inicial com o motivo escrito (no celular não há console).
-        ruim = nav.new_page(viewport={"width": 800, "height": 600})
-        if THREE_DIR:
-            ruim.route("https://cdn.jsdelivr.net/npm/three@*/build/*", lambda r: r.fulfill(
-                path=os.path.join(THREE_DIR, r.request.url.rsplit("/", 1)[1]), content_type="text/javascript"))
+        ruim = pagina(nav, 800, 600, vigiar=False)
         ruim.route("**/media/*", lambda r: r.fulfill(status=404, body="sem imagem"))
         ruim.goto("http://localhost:8765/?s=1")
         ruim.click("#iniciar")
