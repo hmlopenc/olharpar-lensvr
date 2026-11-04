@@ -26,10 +26,11 @@ Um simulador em óculos VR de encaixar celular. O paciente olha ao redor de uma 
 10. Como médico, quero configurar o óculos uma vez por aparelho, para a imagem ficar confortável e sem distorção.
 11. Como médico, quero ajustar o desfoque e os halos de cada lente num único arquivo, para calibrar clinicamente o que o paciente vê.
 12. Como médico, quero que a tela fique cheia, na horizontal e sem apagar durante a experiência.
-13. Como médico, quero que o app volte à tela inicial no fim, pronto para o próximo paciente.
+13. Como médico, quero que o app fique pronto no fim: com controle, volta ao preparo para ver de novo; sem controle, volta à tela inicial para o próximo paciente.
 14. Como médico, quero publicar atualizações sem instalar nada nos aparelhos.
 15. Como paciente, quero ouvir o Dr. Henrique explicando cada capítulo.
-16. Como médico, quero escolher as lentes com o controle do óculos, sem tirar o celular, para repetir ou comparar.
+16. Como funcionária, quero marcar as lentes indicadas para o paciente e testar o controle numa tela visível sem o óculos.
+17. Como paciente, quero encaixar o óculos e ajustar a distância entre os olhos e o foco antes de começar, e começar com o botão do controle quando estiver pronto.
 
 ## Decisões de implementação
 
@@ -44,7 +45,7 @@ Um simulador em óculos VR de encaixar celular. O paciente olha ao redor de uma 
 - Imagem monoscópica (a X6 não grava em 3D) numa esfera parcial centrada na frente: 220° × 180° nas fotos, 190° × 180° no vídeo. O campo sai da proporção da própria imagem (largura ÷ altura × 180°), então o app não repete a constante. A borda lateral some num degradê gravado na imagem.
 - Uma malha por olho (camadas 1 e 2 do three.js), o que viabiliza a monovisão. Nos demais capítulos as duas usam a mesma textura.
 - Contagem e nome do capítulo presos à cabeça, desenhados em 3D: no `immersive-vr` não existe HTML sobreposto.
-- A visão é recentralizada ao fim da contagem: a cena gira para a direção da cabeça.
+- A visão é recentralizada no primeiro capítulo (fim da contagem ou botão do preparo): a cena gira para a direção da cabeça.
 - Sem WebXR (computador, teste headless), a mesma experiência roda na tela, olhando para a frente.
 
 **Óptica (fora do app)**
@@ -79,8 +80,9 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 - Cena por cena: primeiro o dia com todas as lentes selecionadas, depois a noite com as mesmas lentes. A catarata abre cada cena.
 - Ordem fixa (mantida em 23/10/2026): catarata, monofocal, EDOF, multifocal, tórica (dois tempos: sem correção e corrigida), monovisão.
 - 15 s por capítulo de foto; o de vídeo dura o vídeo (10 s). O parâmetro `?s=` na URL encurta todos para testar. Quando houver narração, o capítulo dura o áudio. Nome do capítulo nos primeiros segundos.
-- Tela inicial: catarata sempre incluída, lentes todas marcadas por padrão, sem escolha de cena. Sem controle, no fim volta à tela inicial.
-- Controle do óculos (SC-B03 no modo GAME, lido pela Gamepad API do navegador): dentro do óculos, qualquer botão abre o menu na própria legenda, um item por vez (cada lente com sim/não, e Iniciar). O joystick troca de item e o botão escolhe. Com controle, o fim da sequência volta ao menu sem sair do VR. A entrada no VR continua sendo um toque em Iniciar, porque o Chrome exige um toque. O SC-B03 não tem modo mouse.
+- Tela inicial (04/11/2026), vista sem o óculos: a funcionária marca as lentes indicadas (catarata sempre incluída, todas marcadas por padrão, sem escolha de cena) e testa o controle, que aparece ao vivo (botão apertado ou solto, direção do joystick). Entrar no VR pede um toque em Iniciar, porque o Chrome exige um toque.
+- Controle do óculos: SC-B03 no modo GAME, lido pela Gamepad API do navegador (ele não tem modo mouse). Com controle, o VR abre na tela de preparo, presa à cabeça: o paciente encaixa o óculos, gira o ajuste dos olhos até ver uma imagem só e o de foco até as letras menores ficarem nítidas, e começa com qualquer botão. No fim da sequência, o preparo volta (o paciente pode ver de novo); para o próximo paciente, sai-se do VR pelo X ou pelo voltar do Android. Durante a sequência, os botões não fazem nada.
+- Sem controle: contagem de 5 s e começa sozinho; no fim volta à tela inicial.
 - Sem tablet.
 
 **Vídeo (`tools/video.py`)**
@@ -96,7 +98,7 @@ Valores iniciais, aprovados pelo Dr. Henrique em 23/10/2026 como ponto de partid
 - Um bom teste verifica comportamento externo, não detalhes internos.
 - Costura 1: montagem da sequência a partir da seleção de lentes (lógica pura), testada com o test runner nativo do Node.
 - Costura 2: processamento óptico, com verificações embutidas no script (sem borrão onde a lente foca, borrão crescente com o desfoque, frações somando 1, dimensões das imagens) e uma folha de contato com todas as variantes para revisão visual.
-- Costura 3: a página num navegador headless, sem WebXR (carrega sem erros, avança os capítulos, o vídeo do dia toca, a vista da frente bate com a projeção esperada da imagem e não está espelhada, o menu responde a um controle falso). A aceitação final é o teste do médico com o óculos.
+- Costura 3: a página num navegador headless, sem WebXR (carrega sem erros, avança os capítulos, o vídeo do dia toca, a vista da frente bate com a projeção esperada da imagem e não está espelhada, com um controle falso: o teste da tela inicial responde e o preparo só sai com o botão). A aceitação final é o teste do médico com o óculos.
 
 ## Fora do escopo
 

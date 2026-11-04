@@ -8,7 +8,7 @@
   html, body { margin: 0; height: 100%; background: #000; color: #f2f2f2; font: 18px/1.4 system-ui, sans-serif; overflow: hidden; }
   #inicio { display: grid; place-content: center; gap: 20px; height: 100%; padding: 24px; box-sizing: border-box;
             background: #10161c; text-align: center; overflow-y: auto; }
-  #inicio[hidden], canvas[hidden] { display: none; }
+  #inicio[hidden], canvas[hidden] { display: none !important; }  /* o three.js põe display: block direto no canvas */
   h1 { margin: 0; font-size: 26px; font-weight: 600; }
   fieldset { display: grid; gap: 4px; margin: 0; padding: 12px 16px; border: 1px solid #33414e; border-radius: 12px; text-align: left; }
   legend { padding: 0 6px; color: #a9b7c4; font-size: 15px; }
@@ -17,6 +17,7 @@
   button { font: inherit; font-weight: 600; min-height: 56px; padding: 16px 32px; border: 0; border-radius: 12px; background: #2f80ed; color: #fff; }
   .aviso { margin: 0; max-width: 22em; color: #a9b7c4; font-size: 15px; }
   #erro { margin: 0; max-width: 22em; color: #ff9b8f; }
+  #teste { display: flex; align-items: center; min-height: 48px; margin: 0; font-size: 20px; }
   canvas { display: block; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }</script>
@@ -25,16 +26,19 @@
 <main id="inicio">
   <h1>Simulador de Lentes</h1>
   <fieldset id="lentes">
-    <legend>Lentes a mostrar (a catarata abre sempre)</legend>
+    <legend>Lentes indicadas para o paciente (a catarata abre sempre)</legend>
     <label><input type="checkbox" value="monofocal" checked> Monofocal</label>
     <label><input type="checkbox" value="edof" checked> EDOF</label>
     <label><input type="checkbox" value="multifocal" checked> Multifocal</label>
     <label><input type="checkbox" value="torica" checked> Tórica</label>
     <label><input type="checkbox" value="monovisao" checked> Monovisão</label>
   </fieldset>
+  <fieldset>
+    <legend>Teste do controle</legend>
+    <p id="teste">Ligue o controle no modo GAME e aperte um botão.</p>
+  </fieldset>
   <button id="iniciar">Iniciar</button>
   <p id="erro" role="alert" hidden></p>
-  <p class="aviso" id="controle" hidden>Controle conectado. No óculos, qualquer botão abre o menu.</p>
   <p class="aviso">Simulação ilustrativa. Os resultados variam de pessoa para pessoa.</p>
 </main>
 <script type="module">
@@ -81,6 +85,7 @@ function mostrar(olho, tex) {
   }
   olho.material.map = tex;
   olho.material.needsUpdate = true;
+  olho.visible = true;
 }
 
 // Texturas por URL (foto ou vídeo): o capítulo atual e o próximo ficam carregados, o resto é descartado (memória do celular).
@@ -140,42 +145,92 @@ function legenda(cima, baixo) {
   placa.visible = Boolean(cima || baixo);
 }
 
-// Controle Bluetooth no modo GAME (o SC-B03 do óculos), porque com o celular no óculos não há toque.
-// Qualquer botão abre o menu ou escolhe o item; o joystick, ou o direcional (botões 12 a 15 no layout "standard"), troca de item.
-// ponytail: o menu é a própria legenda, um item por vez; lista inteira em 3D se ficar difícil de usar.
+// Controle Bluetooth no modo GAME (o SC-B03 do óculos): com o celular no óculos não há toque.
+// O Chrome só mostra o controle à página depois do primeiro botão apertado.
 const caixas = [...document.querySelectorAll('#lentes input')];
 const marcadas = () => caixas.filter(c => c.checked).map(c => c.value);
-const rotulo = i => i < caixas.length ? `${caixas[i].parentElement.textContent.trim()}: ${caixas[i].checked ? 'sim' : 'não'}` : 'Iniciar';
-let menu = -1;  // item mostrado; -1 = menu fechado
-let antes = { botao: true, dir: 0 };  // começa "apertado": um botão que já estava seguro não conta
+function lerControle() {  // null sem controle; os botões 12 a 15 são o direcional no layout "standard"
+  const g = [...navigator.getGamepads()].find(Boolean);
+  if (!g) return null;
+  const [x = 0, y = 0] = g.axes, ap = i => g.buttons[i]?.pressed;
+  return {
+    botao: g.buttons.some((b, i) => b.pressed && (i < 12 || i > 15)),
+    seta: ap(12) || y < -0.5 ? '↑' : ap(13) || y > 0.5 ? '↓' : ap(14) || x < -0.5 ? '←' : ap(15) || x > 0.5 ? '→' : 'no centro',
+  };
+}
 
-function mostrarMenu(i = caixas.length) {  // começa em Iniciar
-  rodada++;  // a sequência em andamento para
-  menu = i;
-  legenda('Joystick troca · botão escolhe', rotulo(i));
-  document.body.dataset.menu = rotulo(i);  // ponto de observação do teste de fumaça
+// Teste do controle na tela inicial, ao vivo: a funcionária confere antes de entregar o óculos.
+const teste = document.querySelector('#teste');
+(function testar() {
+  const c = lerControle();
+  const t = c ? `Controle conectado · botão ${c.botao ? 'apertado' : 'solto'} · joystick ${c.seta}`
+              : 'Ligue o controle no modo GAME e aperte um botão.';
+  if (!inicio.hidden && teste.textContent !== t) teste.textContent = t;
+  requestAnimationFrame(testar);
+})();
+
+// Tela de preparo, presa à cabeça: o paciente encaixa o óculos, gira o ajuste dos olhos (distância pupilar)
+// e o de foco olhando as letras, e começa com o botão do controle.
+const telaPreparo = Object.assign(document.createElement('canvas'), { width: 1024, height: 1024 });
+const cp = telaPreparo.getContext('2d');
+cp.fillStyle = '#10161c';
+cp.beginPath();
+cp.roundRect(0, 0, 1024, 1024, 48);
+cp.fill();
+cp.fillStyle = '#fff';
+cp.textAlign = 'center';
+cp.textBaseline = 'middle';
+cp.font = '700 64px system-ui, sans-serif';
+cp.fillText('Ajuste o óculos', 512, 80);
+cp.font = '500 38px system-ui, sans-serif';
+['1. Encaixe no rosto e aperte as tiras.', '2. Gire o ajuste dos olhos até ver uma imagem só.',
+  '3. Gire o foco até as letras menores ficarem nítidas.'].forEach((t, i) => cp.fillText(t, 512, 170 + 56 * i, 960));
+let linha = 330;
+for (const [px, letras] of [[64, 'Z H S'], [46, 'D K N V'], [34, 'C R O H S'], [26, 'N V Z D K O'], [20, 'H S R C Z N V'], [16, 'O K D V H R S Z']]) {
+  linha += 2 * px;
+  cp.font = `700 ${px}px system-ui, sans-serif`;
+  cp.fillText(letras, 512, linha);
+}
+cp.fillStyle = '#2f80ed';
+cp.beginPath();
+cp.roundRect(192, 860, 640, 112, 28);
+cp.fill();
+cp.fillStyle = '#fff';
+cp.font = '700 52px system-ui, sans-serif';
+cp.fillText('Aperte o botão: Iniciar', 512, 916);
+const texPreparo = new THREE.CanvasTexture(telaPreparo);
+texPreparo.colorSpace = THREE.SRGBColorSpace;
+const painel = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: texPreparo, depthTest: false }));  // ~44° a 2,5 m: letra grande para quem ainda tem catarata
+painel.position.set(0, 0, -2.5);
+painel.renderOrder = 1;
+painel.visible = false;
+camera.add(painel);
+
+let preparo = false;  // tela de preparo à mostra, esperando o botão
+let apertado = true;  // começa "apertado": um botão que já estava seguro não conta
+
+function preparar() {
+  rodada++;  // a sequência em andamento, se houver, para
+  preparo = true;
+  oe.visible = od.visible = false;  // fundo escuro, sem cena
+  legenda();
+  painel.visible = true;
+  const [c] = montar(marcadas());
+  pegar(c.od);
+  pegar(c.oe);  // o primeiro capítulo carrega enquanto o paciente se ajusta
+  document.body.dataset.preparo = '';  // ponto de observação do teste de fumaça
   delete document.body.dataset.capitulo;
 }
 
-function controle() {  // chamado a cada quadro
-  const g = [...navigator.getGamepads()].find(Boolean);
-  if (!g) return;
-  const [x = 0, y = 0] = g.axes, ap = i => g.buttons[i]?.pressed;
-  const eixo = Math.abs(x) > Math.abs(y) ? x : y;
-  const dir = ap(13) || ap(15) || eixo > 0.5 ? 1 : ap(12) || ap(14) || eixo < -0.5 ? -1 : 0;
-  const botao = g.buttons.some((b, i) => b.pressed && (i < 12 || i > 15));
-  if (botao && !antes.botao) {
-    if (menu < 0) mostrarMenu();
-    else if (menu < caixas.length) { caixas[menu].checked = !caixas[menu].checked; mostrarMenu(menu); }
-    else { menu = -1; delete document.body.dataset.menu; legenda(); experiencia(montar(marcadas()), ++rodada, 0).catch(falhar); }
-  } else if (dir && dir !== antes.dir && menu >= 0) mostrarMenu((menu + dir + caixas.length + 1) % (caixas.length + 1));
-  antes = { botao, dir };
+function controle() {  // a cada quadro: no preparo, o botão começa a simulação
+  const botao = lerControle()?.botao ?? false;
+  if (preparo && botao && !apertado) {
+    preparo = false;
+    delete document.body.dataset.preparo;
+    experiencia(montar(marcadas()), ++rodada, 0).catch(falhar);
+  }
+  apertado = botao;
 }
-
-// O Chrome só mostra o controle à página depois do primeiro botão apertado: o aviso confirma, antes do óculos, que ele responde.
-const avisoControle = document.querySelector('#controle');
-addEventListener('gamepadconnected', () => { avisoControle.hidden = false; });
-addEventListener('gamepaddisconnected', () => { avisoControle.hidden = ![...navigator.getGamepads()].some(Boolean); });
 
 const frente = new THREE.Vector3();
 function recentralizar() {  // gira o mundo para que o centro da imagem (+x) fique na direção atual da cabeça
@@ -197,18 +252,19 @@ function ajustar() {
 function parar() {
   rodada++;
   renderer.setAnimationLoop(null);
-  for (const o of [oe, od]) o.material.map = null;
+  for (const o of [oe, od]) { o.material.map = null; o.visible = false; }
   manter([]);
   canvas.hidden = true;
   inicio.hidden = false;
   legenda();
-  menu = -1;
-  delete document.body.dataset.menu;
+  preparo = false;
+  painel.visible = false;
+  delete document.body.dataset.preparo;
   delete document.body.dataset.capitulo;
   trava?.release();
 }
 
-async function experiencia(caps, minha, contagem = 5) {  // contagem 0: recomeço pelo menu, com o celular já no óculos
+async function experiencia(caps, minha, contagem = 5) {  // contagem 0: com controle, o paciente já se ajustou no preparo
   const ativa = () => minha === rodada;
   for (const c of caps.slice(0, 1)) { pegar(c.od); pegar(c.oe); }  // carrega durante a contagem
   for (let n = contagem; n > 0 && ativa(); n--) { legenda('Encaixe o celular no óculos', String(n)); await espera(1000); }
@@ -221,8 +277,8 @@ async function experiencia(caps, minha, contagem = 5) {  // contagem 0: recomeç
     const videos = [...new Set([tOD, tOE])].filter(t => t.isVideoTexture).map(t => t.image);
     for (const v of videos) v.currentTime = 0;
     await Promise.all(videos.map(v => v.play().catch(e => { if (ativa()) throw e; })));  // os dois olhos juntos (monovisão)
-    if (!ativa()) return;  // o menu pode ter aberto enquanto o vídeo começava
-    if (i === 0) recentralizar();
+    if (!ativa()) return;  // a sequência pode ter parado enquanto o vídeo começava
+    if (i === 0) { recentralizar(); painel.visible = false; }  // o preparo fica à mostra até a cena estar pronta
     manter([c.od, c.oe, prox?.od, prox?.oe]);
     if (prox) { pegar(prox.od); pegar(prox.oe); }
     document.body.dataset.capitulo = `${c.cena} · ${c.nome}`;  // ponto de observação do teste de fumaça
@@ -233,7 +289,7 @@ async function experiencia(caps, minha, contagem = 5) {  // contagem 0: recomeç
     await espera(ms - Math.min(3000, ms / 2));
   }
   if (!ativa()) return;
-  if ([...navigator.getGamepads()].some(Boolean)) return mostrarMenu();  // com controle, fica no óculos e volta ao menu
+  if (lerControle()) return preparar();  // com controle, volta ao preparo: o paciente pode ver de novo
   if (renderer.xr.isPresenting) renderer.xr.getSession().end();  // o fim da sessão chama parar()
   else parar();
 }
@@ -262,7 +318,8 @@ document.querySelector('#iniciar').onclick = async () => {
     canvas.hidden = false;
     ajustar();
     renderer.setAnimationLoop(() => { controle(); renderer.render(cena, camera); });
-    await experiencia(caps, ++rodada);
+    if (lerControle()) preparar();  // com controle: tela de preparo, e o paciente começa com o botão
+    else await experiencia(caps, ++rodada);  // sem controle: contagem e começa sozinho
   } catch (e) {
     await falhar(e);
   }

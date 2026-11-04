@@ -58,28 +58,30 @@ try:
             pag.screenshot(path=FOTO[foto])  # no SwiftShader cada quadro demora: confere se ainda é o mesmo capítulo
             assert pag.get_attribute("body", "data-capitulo") == cap, f"a foto de {cap} saiu atrasada"
         pag.wait_for_selector("#inicio:not([hidden])", timeout=60000)  # sem controle, no fim volta à tela inicial
-        # Controle no modo GAME (falso, no lugar do Bluetooth): qualquer botão abre o menu, o joystick troca de item,
-        # o botão marca a lente ou recomeça, e no fim o menu volta em vez de sair.
+        # Controle no modo GAME (falso, no lugar do Bluetooth): a tela inicial mostra o teste ao vivo; depois de Iniciar
+        # vem o preparo, que só sai com o botão; no fim, o preparo volta em vez de sair.
         ctrl = pagina(nav, 800, 600)
         ctrl.add_init_script("""const b = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), e = [0, 0];
             navigator.getGamepads = () => [{ id: 'teste', mapping: 'standard', connected: true, buttons: b, axes: e }];
             window.aperta = i => { b[i].pressed = true; setTimeout(() => { b[i].pressed = false; }, 500); };
             window.empurra = v => { e[1] = v; setTimeout(() => { e[1] = 0; }, 500); };""")
         ctrl.goto("http://localhost:8765/?s=2")
-        for lente in ("edof", "multifocal", "torica", "monovisao"):
+        for lente in ("edof", "multifocal", "torica"):
             ctrl.uncheck(f"#lentes input[value={lente}]")
+        for acao, texto in (("", "botão solto · joystick no centro"), ("aperta(0)", "botão apertado"), ("empurra(-1)", "joystick ↑")):
+            if acao:
+                ctrl.evaluate(acao)
+            ctrl.wait_for_function(f"document.querySelector('#teste').textContent.includes('{texto}')", timeout=10000)
+        ctrl.wait_for_timeout(1000)  # o joystick volta ao centro
         ctrl.click("#iniciar")
-        ctrl.wait_for_selector("body[data-capitulo]", timeout=90000)
-        for acao, item in (("aperta(0)", "Iniciar"), ("empurra(-1)", "Monovisão: não"),
-                           ("aperta(1)", "Monovisão: sim"), ("empurra(1)", "Iniciar")):
-            ctrl.evaluate(acao)
-            ctrl.wait_for_selector(f'body[data-menu="{item}"]:not([data-capitulo])', timeout=30000)
-            ctrl.wait_for_timeout(1000)  # o botão solta antes da próxima ação
-        assert ctrl.is_checked("#lentes input[value=monovisao]"), "o menu não marcou a lente"
-        ctrl.evaluate("aperta(2)")
-        ctrl.wait_for_selector('body[data-capitulo="À noite · Monovisão"]', timeout=90000)  # recomeçou com a lente nova
-        ctrl.wait_for_selector('body[data-menu="Iniciar"]', timeout=90000)
-        assert ctrl.is_hidden("#inicio"), "com controle, o fim devia voltar ao menu, não à tela inicial"
+        ctrl.wait_for_selector("body[data-preparo]", timeout=30000)
+        ctrl.wait_for_timeout(3000)
+        ctrl.screenshot(path=os.path.join(SAIDA, "smoke-preparo.png"))  # para revisão visual da tela de preparo
+        assert ctrl.get_attribute("body", "data-capitulo") is None, "a simulação começou sem o botão"
+        ctrl.evaluate("aperta(1)")
+        ctrl.wait_for_selector('body[data-capitulo="À noite · Monovisão"]:not([data-preparo])', timeout=90000)
+        ctrl.wait_for_selector("body[data-preparo]", timeout=90000)
+        assert ctrl.is_hidden("#inicio"), "com controle, o fim devia voltar ao preparo, não à tela inicial"
         # Falha visível: sem as imagens, volta à tela inicial com o motivo escrito (no celular não há console).
         ruim = pagina(nav, 800, 600, vigiar=False)
         ruim.route("**/media/*", lambda r: r.fulfill(status=404, body="sem imagem"))
